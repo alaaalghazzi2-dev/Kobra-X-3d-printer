@@ -40,8 +40,8 @@ create policy "read own profile" on public.profiles
 -- 4) After creating your user in Authentication > Users, make yourself admin
 --    (replace the UUID with the one shown next to your user, and the name):
 -- insert into public.profiles (user_id, name, role)
--- values ('00000000-0000-0000-0000-000000000000', 'Alaa', 'admin');
+ values ('991347de-eb6f-4f54-be58-6d9064e5bd6f', 'Alaa', 'admin');
 --
 -- Add a staff member limited to some sections:
 -- insert into public.profiles (user_id, name, role, permissions)
--- values ('11111111-1111-1111-1111-111111111111', 'Sara', 'staff', '{products,orders,customers}');
+ values ('991347de-eb6f-4f54-be58-6d9064e5bd6f', 'Lama', 'staff', '{products,orders,customers}');
