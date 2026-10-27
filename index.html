@@ -992,8 +992,8 @@ function showToast(msg, type='info') {
 // CLOUD DATA LAYER (Supabase / PostgreSQL)
 // =====================
 // 1) Fill these two values from Supabase: Project Settings > API
-const SUPABASE_URL = 'PASTE_PROJECT_URL_HERE';   // e.g. https://abcdxyz.supabase.co
-const SUPABASE_KEY = 'PASTE_PUBLISHABLE_KEY_HERE'; // publishable / anon key ONLY (never the secret / service_role key)
+const SUPABASE_URL = 'objfkvhdlqtvekruucby';   // e.g. https://abcdxyz.supabase.co
+const SUPABASE_KEY = 'sb_publishable_2H1f76KtV24VmsXQAznJ1A_r33Fcx7-'; // publishable / anon key ONLY (never the secret / service_role key)
 const sb = (window.supabase && SUPABASE_URL.startsWith('https://')) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const COLLECTIONS = ['products','inventory','customers','orders','income','expenses','invoices','reminders','failedPrints','settings','calc'];
