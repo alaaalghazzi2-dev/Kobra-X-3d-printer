@@ -1064,8 +1064,14 @@ async function bootApp() {
   const { data: prof, error } = await sb.from('profiles').select('role,name,permissions').eq('user_id', user.id).maybeSingle();
   if (error || !prof) {
     await sb.auth.signOut();
-    showToast(L('حسابك غير مفعّل. تواصل مع المدير.', 'Your account is not activated. Contact the admin.'), 'error');
-    return false;
+    if (error) {
+      console.error('Profile lookup failed', error);
+      const missing = ['42P01', 'PGRST205'].includes(error.code);
+      throw new Error(missing
+        ? L('جداول التطبيق غير موجودة. نفّذ ملف schema.sql في مشروع Supabase المرتبط بالموقع.', 'Application tables are missing. Run schema.sql in the connected Supabase project.')
+        : L('تعذّر قراءة صلاحيات الحساب. راجع صلاحيات جدول profiles.', 'Could not read the account profile. Check profiles table permissions.'));
+    }
+    throw new Error(L('الحساب موجود لكن غير مفعّل. أضف معرّف المستخدم إلى جدول profiles.', 'Account exists but is not activated. Add its user ID to profiles.'));
   }
   currentUser = { id: user.id, name: prof.name || user.email, role: prof.role, permissions: prof.role === 'admin' ? ['all'] : (prof.permissions || []) };
   await loadAll();
@@ -1263,14 +1269,18 @@ function initData() {
 // AUTH & PERMISSIONS
 // =====================
 async function login(email, password) {
-  if (!sb) { showToast(L('لم يتم ضبط Supabase', 'Supabase is not configured'), 'error'); return false; }
+  if (!sb) throw new Error(L('لم يتم ضبط اتصال Supabase. راجع رابط المشروع والمفتاح العام.', 'Supabase is not configured. Check the project URL and publishable key.'));
   const { error } = await sb.auth.signInWithPassword({ email: String(email).trim(), password });
-  if (error) return false;
-  try {
-    const ok = await bootApp();
-    if (ok) showToast('✅ ' + L('تم تسجيل الدخول', 'Logged in'));
-    return ok;
-  } catch (e) { console.error(e); showToast(L('تعذّر تحميل البيانات', 'Could not load data'), 'error'); return false; }
+  if (error) {
+    console.error('Sign-in failed', error);
+    if (error.code === 'invalid_credentials') throw new Error(L('البريد الإلكتروني أو كلمة المرور غير صحيحة.', 'Invalid email or password.'));
+    if (error.code === 'email_not_confirmed') throw new Error(L('يجب تأكيد البريد الإلكتروني أولاً.', 'Confirm your email first.'));
+    throw new Error(L('تعذّر تسجيل الدخول: ', 'Sign-in failed: ') + error.message);
+  }
+  const ok = await bootApp();
+  if (!ok) throw new Error(L('انتهت جلسة الدخول. حاول مجدداً.', 'Your session expired. Sign in again.'));
+  showToast('✅ ' + L('تم تسجيل الدخول', 'Logged in'));
+  return true;
 }
 
 async function logout() {
@@ -2669,9 +2679,18 @@ function showLoginModal() {
     </div>
   `;
   openModal(L('تسجيل الدخول', 'Login'), content, async () => {
-    const ok = await login(document.getElementById('login-user').value, document.getElementById('login-pass').value);
-    if (ok) closeModal();
-    else showToast(L('بيانات الدخول غير صحيحة', 'Invalid credentials'), 'error');
+    const button = document.getElementById('modal-save-btn');
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const ok = await login(document.getElementById('login-user').value, document.getElementById('login-pass').value);
+      if (ok) closeModal();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || L('تعذّر الاتصال بقاعدة البيانات.', 'Could not connect to the database.'), 'error');
+    } finally {
+      button.disabled = false;
+    }
   });
 }
 
