@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -987,10 +988,111 @@ function showToast(msg, type='info') {
 // =====================
 // DATA LAYER
 // =====================
+// =====================
+// CLOUD DATA LAYER (Supabase / PostgreSQL)
+// =====================
+// 1) Fill these two values from Supabase: Project Settings > API
+const SUPABASE_URL = 'objfkvhdlqtvekruucby';   // e.g. https://abcdxyz.supabase.co
+const SUPABASE_KEY = 'sb_publishable_2H1f76KtV24VmsXQAznJ1A_r33Fcx7-'; // publishable / anon key ONLY (never the secret / service_role key)
+const sb = (window.supabase && SUPABASE_URL.startsWith('https://')) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+const COLLECTIONS = ['products','inventory','customers','orders','income','expenses','invoices','reminders','failedPrints','settings','calc'];
+const SINGLE_DOC = ['settings', 'calc'];   // stored as one row (id = 1); the rest are one row per record
+const cache = {};
+const pending = new Map();
+let syncTimer = null;
+
+// Same API as before (DB.get / DB.set) so the rest of the app is unchanged.
 const DB = {
-  get(key, def) { try { return JSON.parse(localStorage.getItem('3dz_' + key) || 'null') || def; } catch(e) { return def; } },
-  set(key, val) { localStorage.setItem('3dz_' + key, JSON.stringify(val)); },
+  get(key, def) { const v = cache[key]; return (v === undefined || v === null) ? def : structuredClone(v); },
+  set(key, val) { const old = cache[key]; cache[key] = structuredClone(val); queueSync(key, old, val); },
 };
+const toRows = v => Array.isArray(v) ? new Map(v.map(x => [x.id, x])) : new Map(v ? [[1, v]] : []);
+function queueSync(key, oldVal, newVal) {
+  if (!sb || !currentUser) return;
+  const o = toRows(oldVal), n = toRows(newVal);
+  const q = pending.get(key) || { up: new Map(), del: new Set() };
+  for (const [id, d] of n) if (!o.has(id) || JSON.stringify(o.get(id)) !== JSON.stringify(d)) { q.up.set(id, d); q.del.delete(id); }
+  for (const id of o.keys()) if (!n.has(id)) { q.del.add(id); q.up.delete(id); }
+  if (q.up.size || q.del.size) pending.set(key, q);
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(flushSync, 400);
+}
+async function flushSync() {
+  clearTimeout(syncTimer);
+  const batch = [...pending]; pending.clear();
+  for (const [key, q] of batch) {
+    try {
+      const now = new Date().toISOString();
+      const rows = [...q.up].map(([id, data]) => ({ collection: key, id, data, updated_at: now }));
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await sb.from('records').upsert(rows.slice(i, i + 500));
+        if (error) throw error;
+      }
+      if (q.del.size) {
+        const { error } = await sb.from('records').delete().eq('collection', key).in('id', [...q.del]);
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.error('Cloud sync failed', e);
+      const cur = pending.get(key) || { up: new Map(), del: new Set() };
+      for (const [id, d] of q.up) if (!cur.up.has(id) && !cur.del.has(id)) cur.up.set(id, d);
+      for (const id of q.del) if (!cur.up.has(id)) cur.del.add(id);
+      pending.set(key, cur);
+      showToast(L('تعذّر الحفظ في السحابة، ستُعاد المحاولة تلقائياً', 'Cloud save failed, will retry automatically'), 'error');
+      syncTimer = setTimeout(flushSync, 8000);
+    }
+  }
+}
+async function loadAll() {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {   // the API returns at most 1000 rows per request
+    const { data, error } = await sb.from('records').select('collection,id,data').order('collection').order('id').range(from, from + 999);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < 1000) break;
+  }
+  COLLECTIONS.forEach(k => { cache[k] = SINGLE_DOC.includes(k) ? undefined : []; });
+  rows.forEach(r => {
+    if (SINGLE_DOC.includes(r.collection)) cache[r.collection] = r.data;
+    else if (cache[r.collection]) cache[r.collection].push(r.data);
+  });
+}
+async function bootApp() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return false;
+  const { data: prof, error } = await sb.from('profiles').select('role,name,permissions').eq('user_id', user.id).maybeSingle();
+  if (error || !prof) {
+    await sb.auth.signOut();
+    showToast(L('حسابك غير مفعّل. تواصل مع المدير.', 'Your account is not activated. Contact the admin.'), 'error');
+    return false;
+  }
+  currentUser = { id: user.id, name: prof.name || user.email, role: prof.role, permissions: prof.role === 'admin' ? ['all'] : (prof.permissions || []) };
+  await loadAll();
+  initData();
+  buildSidebar();
+  renderAll();
+  showSection('dashboard');
+  return true;
+}
+async function startCloud() {
+  buildSidebar();
+  showSection('dashboard');
+  if (!sb) { showToast(L('ضع رابط Supabase والمفتاح في أعلى الكود أولاً', 'Set SUPABASE_URL and SUPABASE_KEY at the top of the script first'), 'error'); return; }
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLoginModal(); return; }
+  try { if (!(await bootApp())) showLoginModal(); }
+  catch (e) { console.error(e); showToast(L('تعذّر الاتصال بقاعدة البيانات', 'Could not reach the database'), 'error'); }
+}
+async function refreshFromCloud() {
+  if (!sb || !currentUser || pending.size) return;
+  try { await loadAll(); renderAll(); } catch (e) { console.error(e); }
+}
+window.addEventListener('beforeunload', e => { if (pending.size) { e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('visibilitychange', () => {
+  const modalOpen = document.getElementById('modal-overlay').classList.contains('active');
+  if (!document.hidden && !modalOpen) refreshFromCloud();   // pick up changes made from other devices
+});
 
 
 // =====================
@@ -1152,7 +1254,6 @@ function initData() {
   if (!DB.get('income', null)) DB.set('income', []);
   if (!DB.get('expenses', null)) DB.set('expenses', []);
   if (!DB.get('invoices', null)) DB.set('invoices', []);
-  if (!DB.get('users', null)) DB.set('users', [{id:1, name:'Admin', username:'admin', password:'admin', mustChange:true, role:'admin', permissions:['all'], createdAt: new Date().toISOString()}]);
   if (!DB.get('reminders', null)) DB.set('reminders', []);
   if (!DB.get('failedPrints', null)) DB.set('failedPrints', []);
   if (!DB.get('settings', null)) DB.set('settings', { exchangeRate: 15000, defaultCurrency: 'SYP', companyName: '3Dzone', companyAddress: '', companyPhone: '', companyEmail: '' });
@@ -1161,23 +1262,26 @@ function initData() {
 // =====================
 // AUTH & PERMISSIONS
 // =====================
-async function login(username, password) {
-  const u = DB.get('users', []).find(x => x.username === username);
-  if (!u || !u.salt || !u.passHash) return false;
-  if (await hashPassword(password, u.salt) !== u.passHash) return false;
-  setCurrentUser(u);
-  localStorage.setItem('3dz_session', JSON.stringify({ id: u.id }));
-  showToast('✅ ' + (currentLang === 'ar' ? 'تم تسجيل الدخول' : 'Logged in'));
-  buildSidebar();
-  renderAll();
-  return true;
+async function login(email, password) {
+  if (!sb) { showToast(L('لم يتم ضبط Supabase', 'Supabase is not configured'), 'error'); return false; }
+  const { error } = await sb.auth.signInWithPassword({ email: String(email).trim(), password });
+  if (error) return false;
+  try {
+    const ok = await bootApp();
+    if (ok) showToast('✅ ' + L('تم تسجيل الدخول', 'Logged in'));
+    return ok;
+  } catch (e) { console.error(e); showToast(L('تعذّر تحميل البيانات', 'Could not load data'), 'error'); return false; }
 }
 
-function logout() {
+async function logout() {
+  try { await flushSync(); } catch (e) {}
+  if (sb) await sb.auth.signOut();
   currentUser = null;
-  localStorage.removeItem('3dz_session');
-  showToast('👋 ' + (currentLang === 'ar' ? 'تم تسجيل الخروج' : 'Logged out'));
+  Object.keys(cache).forEach(k => delete cache[k]);
+  showToast('👋 ' + L('تم تسجيل الخروج', 'Logged out'));
   buildSidebar();
+  showSection('dashboard');
+  showLoginModal();
 }
 
 function hasPermission(perm) {
@@ -1203,7 +1307,6 @@ const navItems = [
   { id:'finance', icon:'💰', perm:'finance' },
   { id:'reports', icon:'📈', perm:'reports' },
   { id:'invoices', icon:'🧾', perm:'invoices' },
-  { id:'users', icon:'🔐', perm:'users' },
   { id:'reminders', icon:'🔔', perm:'reminders' },
   { id:'settings', icon:'⚙️', perm:'settings' },
 ];
@@ -2560,14 +2663,14 @@ function deleteUser(id) { if (!confirm(t('confirm_delete'))) return; DB.set('use
 
 function showLoginModal() {
   const content = `
-    <div class="form-grid" style="max-width:300px;margin:0 auto;">
-      <div class="form-group"><label>Username</label><input type="text" id="login-user"></div>
-      <div class="form-group"><label>Password</label><input type="password" id="login-pass"></div>
+    <div class="form-grid" style="max-width:320px;margin:0 auto;">
+      <div class="form-group"><label>${L('البريد الإلكتروني', 'Email')}</label><input type="email" id="login-user" autocomplete="username"></div>
+      <div class="form-group"><label>${L('كلمة المرور', 'Password')}</label><input type="password" id="login-pass" autocomplete="current-password" onkeydown="if(event.key==='Enter')document.getElementById('modal-save-btn').click()"></div>
     </div>
   `;
-  openModal(currentLang === 'ar' ? 'تسجيل الدخول' : 'Login', content, async () => {
+  openModal(L('تسجيل الدخول', 'Login'), content, async () => {
     const ok = await login(document.getElementById('login-user').value, document.getElementById('login-pass').value);
-    if (ok) { closeModal(); if (currentUser.mustChange) openChangePasswordModal(); }
+    if (ok) closeModal();
     else showToast(L('بيانات الدخول غير صحيحة', 'Invalid credentials'), 'error');
   });
 }
@@ -2662,7 +2765,6 @@ function exportBackupJSON() {
     income: DB.get('income', []),
     expenses: DB.get('expenses', []),
     invoices: DB.get('invoices', []),
-    users: DB.get('users', []),
     reminders: DB.get('reminders', []),
     failedPrints: DB.get('failedPrints', [])
   };
@@ -2694,19 +2796,15 @@ function importBackupJSON(input) {
   reader.onload = async function(e) {
     try {
       const data = JSON.parse(e.target.result);
-      const keys = ['products','inventory','customers','orders','income','expenses','invoices','users','reminders','failedPrints'];
+      const keys = ['products','inventory','customers','orders','income','expenses','invoices','reminders','failedPrints'];
       for (const k of keys) {
         if (data[k] === undefined) continue;
         if (!Array.isArray(data[k]) || !data[k].every(x => x && typeof x === 'object' && Number.isFinite(x.id))) throw new Error('invalid ' + k);
       }
-      if (data.users && !data.users.some(u => u.role === 'admin')) throw new Error('no admin');
       if (data.settings !== undefined && (typeof data.settings !== 'object' || Array.isArray(data.settings))) throw new Error('invalid settings');
       if (!confirm(L('سيتم استبدال البيانات الحالية بالنسخة المستوردة. متابعة؟', 'Current data will be replaced by the imported backup. Continue?'))) { input.value = ''; return; }
       keys.forEach(k => { if (data[k]) DB.set(k, data[k]); });
       if (data.settings) DB.set('settings', data.settings);
-      await migratePasswords();
-      const cu = currentUser && DB.get('users', []).find(x => x.id === currentUser.id);
-      if (cu) setCurrentUser(cu); else logout();
       showToast(t('toast_import_done'));
       renderAll();
     } catch(err) { showToast(t('toast_import_fail'), 'error'); }
@@ -2717,7 +2815,7 @@ function importBackupJSON(input) {
 
 function clearAllData() {
   if (!confirm(t('confirm_clear'))) return;
-  ['products','inventory','customers','orders','income','expenses','invoices','reminders','failedPrints'].forEach(k => localStorage.removeItem('3dz_' + k));
+  ['products','inventory','customers','orders','income','expenses','invoices','reminders','failedPrints'].forEach(k => DB.set(k, []));
   // Keep users and settings
   showToast(t('toast_cleared'));
   renderAll();
@@ -2734,15 +2832,8 @@ function renderFailedPrints() {
 // INIT
 // =====================
 document.addEventListener('DOMContentLoaded', async () => {
-  initData();
-  await migratePasswords();
 
   // Restore session
-  try {
-    const sess = JSON.parse(localStorage.getItem('3dz_session') || 'null');
-    const su = sess && DB.get('users', []).find(x => x.id === sess.id);
-    if (su) setCurrentUser(su); else localStorage.removeItem('3dz_session');
-  } catch(e) { localStorage.removeItem('3dz_session'); }
 
   // Restore language
   const savedLang = localStorage.getItem('3dz_lang') || 'ar';
@@ -2761,9 +2852,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (reportDate) reportDate.value = today;
 
   // Render
-  buildSidebar();
-  showSection('dashboard');
-  if (currentUser && currentUser.mustChange) setTimeout(openChangePasswordModal, 400);
+  await startCloud();
 
   // Check reminders
   setInterval(() => {
