@@ -44,4 +44,4 @@ create policy "read own profile" on public.profiles
 --
 -- Add a staff member limited to some sections:
 -- insert into public.profiles (user_id, name, role, permissions)
- values ('991347de-eb6f-4f54-be58-6d9064e5bd6f', 'Lama', 'staff', '{products,orders,customers}');
+ -- values ('991347de-eb6f-4f54-be58-6d9064e5bd6f', 'Lama', 'staff', '{products,orders,customers}');
