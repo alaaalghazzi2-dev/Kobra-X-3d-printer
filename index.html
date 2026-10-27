@@ -1,0 +1,2781 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" id="root">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3Dzone Manager — نظام إدارة طباعة ثلاثية الأبعاد</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --primary:#6366f1; --primary-dark:#4f46e5; --secondary:#ec4899; --accent:#06b6d4;
+  --success:#22c55e; --warning:#f59e0b; --danger:#ef4444; --info:#3b82f6;
+  --bg:#0b1120; --surface:#151e32; --surface-light:#1e293b; --surface-hover:#243449;
+  --text:#f1f5f9; --text-muted:#94a3b8; --border:rgba(255,255,255,0.06);
+  --radius:14px; --shadow:0 10px 40px rgba(0,0,0,0.35);
+  --sidebar-width:260px; --header-height:64px;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family:'Tajawal','Inter',sans-serif;
+  background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden;
+}
+body[lang="en"] { font-family:'Inter','Tajawal',sans-serif; }
+
+.bg-mesh {
+  position:fixed; inset:0; z-index:-1;
+  background:
+    radial-gradient(ellipse at 15% 15%, rgba(99,102,241,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 85%, rgba(236,72,153,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(6,182,212,0.06) 0%, transparent 60%);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--surface-light); border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background:var(--primary); }
+
+/* Layout */
+.app-layout { display:flex; min-height:100vh; }
+.sidebar {
+  width:var(--sidebar-width); background:var(--surface); border-left:1px solid var(--border);
+  position:fixed; top:0; bottom:0; right:0; z-index:100;
+  display:flex; flex-direction:column; transition:transform 0.3s ease;
+}
+body[dir="ltr"] .sidebar { right:auto; left:0; border-left:none; border-right:1px solid var(--border); }
+.sidebar-header {
+  padding:20px; display:flex; align-items:center; gap:12px;
+  border-bottom:1px solid var(--border);
+}
+.sidebar-header .logo-icon {
+  width:42px; height:42px; border-radius:10px;
+  background:linear-gradient(135deg,var(--primary),var(--secondary));
+  display:flex; align-items:center; justify-content:center; font-size:1.3rem;
+}
+.sidebar-header .logo-text { font-size:1.3rem; font-weight:800; }
+.sidebar-header .logo-sub { font-size:0.75rem; color:var(--text-muted); }
+
+.sidebar-nav { flex:1; padding:16px 12px; overflow-y:auto; }
+.nav-group { margin-bottom:8px; }
+.nav-group-title {
+  padding:8px 16px; font-size:0.7rem; font-weight:700; color:var(--text-muted);
+  text-transform:uppercase; letter-spacing:0.5px;
+}
+.nav-item {
+  display:flex; align-items:center; gap:12px; padding:12px 16px;
+  border-radius:10px; color:var(--text-muted); font-weight:600; font-size:0.95rem;
+  cursor:pointer; transition:all 0.2s ease; margin-bottom:4px; position:relative;
+}
+.nav-item:hover { background:var(--surface-hover); color:var(--text); }
+.nav-item.active {
+  background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(236,72,153,0.1));
+  color:var(--text); border:1px solid rgba(99,102,241,0.2);
+}
+.nav-item .badge {
+  position:absolute; top:50%; transform:translateY(-50%);
+  background:var(--danger); color:white; font-size:0.65rem; font-weight:800;
+  padding:2px 6px; border-radius:10px;
+}
+body[dir="rtl"] .nav-item .badge { left:12px; }
+body[dir="ltr"] .nav-item .badge { right:12px; }
+
+.sidebar-footer {
+  padding:16px; border-top:1px solid var(--border);
+  display:flex; align-items:center; gap:10px; font-size:0.85rem; color:var(--text-muted);
+}
+.sidebar-footer .avatar {
+  width:36px; height:36px; border-radius:50%;
+  background:linear-gradient(135deg,var(--primary),var(--accent));
+  display:flex; align-items:center; justify-content:center; font-weight:700; color:white;
+}
+
+.main-area { flex:1; margin-right:var(--sidebar-width); display:flex; flex-direction:column; }
+body[dir="ltr"] .main-area { margin-right:0; margin-left:var(--sidebar-width); }
+
+.topbar {
+  height:var(--header-height); background:rgba(11,17,32,0.8); backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border); display:flex; align-items:center;
+  justify-content:space-between; padding:0 28px; position:sticky; top:0; z-index:90;
+}
+.topbar-left { display:flex; align-items:center; gap:16px; }
+.topbar-title { font-size:1.25rem; font-weight:800; }
+.topbar-actions { display:flex; align-items:center; gap:12px; }
+
+.lang-btn, .currency-btn {
+  padding:6px 14px; border-radius:8px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text-muted); font-weight:600; font-size:0.8rem;
+  cursor:pointer; transition:all 0.2s; font-family:inherit;
+}
+.lang-btn:hover, .currency-btn:hover { border-color:var(--primary); color:var(--text); }
+.lang-btn.active, .currency-btn.active {
+  background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:white; border-color:transparent;
+}
+
+.content-area { flex:1; padding:28px; overflow-y:auto; }
+
+/* Cards */
+.card {
+  background:var(--surface); border-radius:var(--radius); padding:24px;
+  border:1px solid var(--border); box-shadow:var(--shadow); margin-bottom:24px;
+}
+.card-title {
+  font-size:1.15rem; font-weight:700; margin-bottom:20px;
+  display:flex; align-items:center; gap:10px;
+}
+.card-title .icon { font-size:1.3rem; }
+
+/* KPI Cards */
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px; }
+.kpi-card {
+  background:var(--surface); border-radius:var(--radius); padding:20px;
+  border:1px solid var(--border); position:relative; overflow:hidden;
+}
+.kpi-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg,var(--primary),var(--secondary));
+}
+.kpi-card .kpi-label { color:var(--text-muted); font-size:0.8rem; font-weight:600; margin-bottom:6px; }
+.kpi-card .kpi-value { font-size:1.7rem; font-weight:800; }
+.kpi-card .kpi-change { font-size:0.75rem; margin-top:4px; }
+.kpi-card .kpi-change.up { color:var(--success); }
+.kpi-card .kpi-change.down { color:var(--danger); }
+
+/* Tables */
+.data-table { width:100%; border-collapse:collapse; }
+.data-table th, .data-table td { padding:12px 16px; text-align:right; border-bottom:1px solid var(--border); }
+body[dir="ltr"] .data-table th, body[dir="ltr"] .data-table td { text-align:left; }
+.data-table th { background:var(--surface-light); color:var(--text-muted); font-weight:700; font-size:0.8rem; text-transform:uppercase; }
+.data-table tr:hover { background:var(--surface-hover); }
+.data-table .actions { display:flex; gap:6px; }
+
+/* Buttons */
+.btn {
+  padding:10px 20px; border-radius:10px; border:none; font-family:inherit; font-weight:700;
+  font-size:0.9rem; cursor:pointer; transition:all 0.2s; display:inline-flex; align-items:center; gap:8px;
+}
+.btn-primary { background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:white; }
+.btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(99,102,241,0.4); }
+.btn-secondary { background:var(--surface-light); color:var(--text); border:1px solid var(--border); }
+.btn-secondary:hover { background:var(--bg); }
+.btn-success { background:linear-gradient(135deg,var(--success),#16a34a); color:white; }
+.btn-danger { background:linear-gradient(135deg,var(--danger),#dc2626); color:white; }
+.btn-warning { background:linear-gradient(135deg,var(--warning),#d97706); color:white; }
+.btn-info { background:linear-gradient(135deg,var(--accent),#0891b2); color:white; }
+.btn-sm { padding:6px 14px; font-size:0.8rem; }
+
+.btn-group { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+
+/* Forms */
+.form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
+.form-group { display:flex; flex-direction:column; gap:6px; }
+.form-group label { font-weight:600; color:var(--text-muted); font-size:0.85rem; }
+.form-group input, .form-group select, .form-group textarea {
+  padding:12px 14px; border-radius:10px; background:var(--bg); border:2px solid var(--surface-light);
+  color:var(--text); font-family:inherit; font-size:0.95rem; transition:all 0.2s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(99,102,241,0.12);
+}
+.form-group input[type="number"] { text-align:left; direction:ltr; }
+
+/* Status badges */
+.status-badge {
+  display:inline-flex; align-items:center; gap:6px; padding:4px 12px;
+  border-radius:20px; font-size:0.75rem; font-weight:700;
+}
+.status-pending { background:rgba(245,158,11,0.15); color:var(--warning); }
+.status-printing { background:rgba(59,130,246,0.15); color:var(--info); }
+.status-ready { background:rgba(6,182,212,0.15); color:var(--accent); }
+.status-delivered { background:rgba(34,197,94,0.15); color:var(--success); }
+.status-cancelled { background:rgba(239,68,68,0.15); color:var(--danger); }
+
+/* Search & Filter bar */
+.toolbar { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
+.search-box {
+  flex:1; min-width:200px; position:relative;
+}
+.search-box input {
+  width:100%; padding:10px 14px 10px 40px; border-radius:10px;
+  background:var(--bg); border:2px solid var(--surface-light); color:var(--text); font-family:inherit;
+}
+.search-box input:focus { outline:none; border-color:var(--primary); }
+body[dir="rtl"] .search-box input { padding:10px 40px 10px 14px; }
+
+/* Modal */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px);
+  z-index:1000; display:none; align-items:center; justify-content:center; padding:20px;
+}
+.modal-overlay.active { display:flex; }
+.modal {
+  background:var(--surface); border-radius:var(--radius); width:100%; max-width:600px;
+  max-height:90vh; overflow-y:auto; border:1px solid var(--border); box-shadow:var(--shadow);
+}
+.modal-header {
+  padding:20px 24px; border-bottom:1px solid var(--border);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.modal-header h3 { font-size:1.1rem; }
+.modal-close { background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer; }
+.modal-body { padding:24px; }
+.modal-footer { padding:16px 24px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px; }
+
+/* Tabs */
+.tabs { display:flex; gap:8px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+.tab-btn {
+  padding:10px 20px; border-radius:8px; border:none; background:transparent;
+  color:var(--text-muted); font-weight:600; cursor:pointer; font-family:inherit;
+}
+.tab-btn.active { background:var(--surface-light); color:var(--text); }
+.tab-btn:hover:not(.active) { color:var(--text); }
+
+/* Toast */
+.toast-container {
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:2000;
+  display:flex; flex-direction:column; gap:8px;
+}
+.toast {
+  background:var(--surface); color:var(--text); padding:14px 24px; border-radius:12px;
+  box-shadow:var(--shadow); border:1px solid var(--border); font-weight:600;
+  animation:slideUp 0.3s ease; min-width:280px; text-align:center;
+}
+@keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+/* Sections */
+.section { display:none; animation:fadeIn 0.3s ease; }
+.section.active { display:block; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+/* Print */
+@media print { .no-print { display:none !important; } body { background:white; color:black; } }
+
+/* Mobile */
+@media (max-width:900px) {
+  .sidebar { transform:translateX(100%); }
+  body[dir="ltr"] .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); }
+  .main-area { margin-right:0 !important; margin-left:0 !important; }
+  .kpi-grid { grid-template-columns:1fr 1fr; }
+}
+@media (max-width:600px) {
+  .kpi-grid { grid-template-columns:1fr; }
+  .content-area { padding:16px; }
+}
+
+/* Charts container */
+.chart-container { position:relative; height:300px; margin:16px 0; }
+.chart-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(350px,1fr)); gap:20px; }
+
+/* Invoice preview */
+.invoice-preview-box {
+  background:white; color:#1e293b; border-radius:12px; padding:40px; margin-top:20px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.3); max-width:800px; margin-left:auto; margin-right:auto;
+}
+body[dir="rtl"] .invoice-preview-box { direction:rtl; text-align:right; }
+body[dir="ltr"] .invoice-preview-box { direction:ltr; text-align:left; }
+
+/* Barcode/QR */
+.barcode-box { background:white; padding:16px; border-radius:8px; display:inline-block; margin:8px 0; }
+
+/* File link */
+.file-link { color:var(--accent); text-decoration:none; font-weight:600; }
+.file-link:hover { text-decoration:underline; }
+
+/* Empty state */
+.empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); }
+.empty-state .icon { font-size:3rem; margin-bottom:12px; opacity:0.5; }
+
+/* Toggle switch */
+.toggle-switch { position:relative; display:inline-block; width:44px; height:24px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider {
+  position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+  background:var(--surface-light); border-radius:24px; transition:0.3s;
+}
+.toggle-slider::before {
+  content:''; position:absolute; height:18px; width:18px; left:3px; bottom:3px;
+  background:white; border-radius:50%; transition:0.3s;
+}
+input:checked + .toggle-slider { background:var(--primary); }
+input:checked + .toggle-slider::before { transform:translateX(20px); }
+
+/* Progress bar */
+.progress-bar { height:8px; background:var(--bg); border-radius:4px; overflow:hidden; margin-top:6px; }
+.progress-fill { height:100%; border-radius:4px; transition:width 0.5s ease; }
+
+/* Color dot */
+.color-dot { width:14px; height:14px; border-radius:50%; display:inline-block; border:2px solid rgba(255,255,255,0.2); }
+</style>
+<base target="_blank">
+</head>
+<body lang="ar" dir="rtl">
+<div class="bg-mesh"></div>
+
+<div class="app-layout">
+  <!-- Sidebar -->
+  <aside class="sidebar no-print" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-icon">🖨️</div>
+      <div>
+        <div class="logo-text">3Dzone Manager</div>
+        <div class="logo-sub" data-i18n="app_subtitle">نظام إدارة الطباعة</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav">
+      <!-- Generated by JS -->
+    </nav>
+    <div class="sidebar-footer" id="sidebar-user">
+      <div class="avatar">A</div>
+      <div>
+        <div style="font-weight:700;color:var(--text);" id="user-name">Admin</div>
+        <div style="font-size:0.75rem;" id="user-role">مدير</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Area -->
+  <div class="main-area">
+    <header class="topbar no-print">
+      <div class="topbar-left">
+        <button class="btn btn-sm btn-secondary" onclick="toggleSidebar()" style="display:none;" id="menu-btn">☰</button>
+        <h1 class="topbar-title" id="page-title" data-i18n="dashboard">لوحة البيانات</h1>
+      </div>
+      <div class="topbar-actions">
+        <div style="display:flex;gap:6px;">
+          <button class="currency-btn active" onclick="setCurrency('SYP')" id="cur-syp">ل.س</button>
+          <button class="currency-btn" onclick="setCurrency('USD')" id="cur-usd">$</button>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="lang-btn active" onclick="setLang('ar')" id="lang-ar">العربية</button>
+          <button class="lang-btn" onclick="setLang('en')" id="lang-en">English</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="content-area" id="main-content">
+
+      <!-- DASHBOARD -->
+      <section id="sec-dashboard" class="section active">
+        <div class="kpi-grid" id="dashboard-kpis">
+          <!-- Filled by JS -->
+        </div>
+        <div class="chart-grid">
+          <div class="card">
+            <div class="card-title"><span class="icon">📈</span> <span data-i18n="chart_sales">المبيعات الشهرية</span></div>
+            <div class="chart-container"><canvas id="chart-sales"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">📊</span> <span data-i18n="chart_products">أكثر المنتجات مبيعاً</span></div>
+            <div class="chart-container"><canvas id="chart-products"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🧵</span> <span data-i18n="chart_filament">مخزون الفيلامنت</span></div>
+            <div class="chart-container"><canvas id="chart-filament"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">💰</span> <span data-i18n="chart_finance">الإيرادات vs المصروفات</span></div>
+            <div class="chart-container"><canvas id="chart-finance"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="icon">🛒</span> <span data-i18n="recent_orders">أحدث الطلبات</span></div>
+          <div class="table-responsive">
+            <table class="data-table" id="dashboard-orders-table">
+              <thead><tr>
+                <th data-i18n="th_order">الطلب</th>
+                <th data-i18n="th_customer">العميل</th>
+                <th data-i18n="th_status">الحالة</th>
+                <th data-i18n="th_total">المجموع</th>
+                <th data-i18n="th_date">التاريخ</th>
+              </tr></thead>
+              <tbody id="dashboard-orders-body"><tr><td colspan="5" class="empty-state" data-i18n="no_orders">لا توجد طلبات</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRODUCTS -->
+      <section id="sec-products" class="section">
+        <div class="toolbar no-print">
+          <div class="search-box">
+            <input type="text" id="product-search" data-i18n-placeholder="search_products" placeholder="ابحث في المنتجات..." oninput="renderProducts()">
+          </div>
+          <select id="product-filter-cat" class="btn btn-secondary btn-sm" onchange="renderProducts()" style="padding:8px 12px;">
+            <option value="" data-i18n="all_categories">كل التصنيفات</option>
+          </select>
+          <select id="product-filter-type" class="btn btn-secondary btn-sm" onchange="renderProducts()" style="padding:8px 12px;">
+            <option value="" data-i18n="all_types">كل الأنواع</option>
+            <option value="ready" data-i18n="type_ready">جاهز</option>
+            <option value="custom" data-i18n="type_custom">حسب الطلب</option>
+          </select>
+          <button class="btn btn-primary" onclick="openProductModal()">➕ <span data-i18n="btn_add_product">إضافة منتج</span></button>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table" id="products-table">
+              <thead><tr>
+                <th data-i18n="th_sku">SKU</th>
+                <th data-i18n="th_name">الاسم</th>
+                <th data-i18n="th_category">التصنيف</th>
+                <th data-i18n="th_type">النوع</th>
+                <th data-i18n="th_stock">المخزون</th>
+                <th data-i18n="th_cost">التكلفة</th>
+                <th data-i18n="th_price">السعر</th>
+                <th data-i18n="th_actions">إجراءات</th>
+              </tr></thead>
+              <tbody id="products-body"><tr><td colspan="8" class="empty-state" data-i18n="no_products">لا توجد منتجات</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- INVENTORY -->
+      <section id="sec-inventory" class="section">
+        <div class="toolbar no-print">
+          <div class="search-box">
+            <input type="text" id="inventory-search" data-i18n-placeholder="search_inventory" placeholder="ابحث في المخزون..." oninput="renderInventory()">
+          </div>
+          <select id="inventory-filter-cat" class="btn btn-secondary btn-sm" onchange="renderInventory()" style="padding:8px 12px;">
+            <option value="" data-i18n="all_categories">كل التصنيفات</option>
+            <option value="filament" data-i18n="cat_filament">فيلامنت</option>
+            <option value="spare" data-i18n="cat_spare">قطع غيار</option>
+            <option value="parts" data-i18n="cat_parts">إكسسوارات</option>
+            <option value="addons" data-i18n="cat_addons">إضافات</option>
+            <option value="other" data-i18n="cat_other">أخرى</option>
+          </select>
+          <button class="btn btn-primary" onclick="openInventoryModal()">➕ <span data-i18n="btn_add_item">إضافة مادة</span></button>
+        </div>
+        <div class="card" id="low-stock-alert" style="display:none; border-color:var(--danger);">
+          <div class="card-title" style="color:var(--danger);"><span class="icon">⚠️</span> <span data-i18n="low_stock_title">تنبيه: مخزون منخفض</span></div>
+          <div id="low-stock-list"></div>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table" id="inventory-table">
+              <thead><tr>
+                <th data-i18n="th_name">الاسم</th>
+                <th data-i18n="th_category">التصنيف</th>
+                <th data-i18n="th_qty">الكمية</th>
+                <th data-i18n="th_unit">الوحدة</th>
+                <th data-i18n="th_min">الحد الأدنى</th>
+                <th data-i18n="th_cost">التكلفة</th>
+                <th data-i18n="th_actions">إجراءات</th>
+              </tr></thead>
+              <tbody id="inventory-body"><tr><td colspan="7" class="empty-state" data-i18n="no_inventory">لا توجد مواد</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- CUSTOMERS -->
+      <section id="sec-customers" class="section">
+        <div class="toolbar no-print">
+          <div class="search-box">
+            <input type="text" id="customer-search" data-i18n-placeholder="search_customers" placeholder="ابحث في العملاء..." oninput="renderCustomers()">
+          </div>
+          <button class="btn btn-primary" onclick="openCustomerModal()">➕ <span data-i18n="btn_add_customer">إضافة عميل</span></button>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table" id="customers-table">
+              <thead><tr>
+                <th data-i18n="th_name">الاسم</th>
+                <th data-i18n="th_phone">الهاتف</th>
+                <th data-i18n="th_whatsapp">واتساب</th>
+                <th data-i18n="th_address">العنوان</th>
+                <th data-i18n="th_orders">الطلبات</th>
+                <th data-i18n="th_total_spent">إجمالي الشراء</th>
+                <th data-i18n="th_actions">إجراءات</th>
+              </tr></thead>
+              <tbody id="customers-body"><tr><td colspan="7" class="empty-state" data-i18n="no_customers">لا يوجد عملاء</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ORDERS -->
+      <section id="sec-orders" class="section">
+        <div class="toolbar no-print">
+          <div class="search-box">
+            <input type="text" id="order-search" data-i18n-placeholder="search_orders" placeholder="ابحث في الطلبات..." oninput="renderOrders()">
+          </div>
+          <select id="order-filter-status" class="btn btn-secondary btn-sm" onchange="renderOrders()" style="padding:8px 12px;">
+            <option value="" data-i18n="all_statuses">كل الحالات</option>
+            <option value="pending" data-i18n="status_pending">قيد الانتظار</option>
+            <option value="printing" data-i18n="status_printing">قيد الطباعة</option>
+            <option value="ready" data-i18n="status_ready">جاهز</option>
+            <option value="delivered" data-i18n="status_delivered">مُسلَّم</option>
+            <option value="cancelled" data-i18n="status_cancelled">ملغى</option>
+          </select>
+          <button class="btn btn-primary" onclick="openOrderModal()">➕ <span data-i18n="btn_add_order">طلب جديد</span></button>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table" id="orders-table">
+              <thead><tr>
+                <th data-i18n="th_order_id">رقم الطلب</th>
+                <th data-i18n="th_customer">العميل</th>
+                <th data-i18n="th_items">البنود</th>
+                <th data-i18n="th_status">الحالة</th>
+                <th data-i18n="th_total">المجموع</th>
+                <th data-i18n="th_payment">الدفع</th>
+                <th data-i18n="th_date">التاريخ</th>
+                <th data-i18n="th_actions">إجراءات</th>
+              </tr></thead>
+              <tbody id="orders-body"><tr><td colspan="8" class="empty-state" data-i18n="no_orders">لا توجد طلبات</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- FINANCE -->
+      <section id="sec-finance" class="section">
+        <div class="tabs no-print">
+          <button class="tab-btn active" onclick="setFinanceTab('income')" data-i18n="tab_income">الوارد</button>
+          <button class="tab-btn" onclick="setFinanceTab('expense')" data-i18n="tab_expense">الصادر</button>
+          <button class="tab-btn" onclick="setFinanceTab('summary')" data-i18n="tab_summary">الملخص</button>
+        </div>
+        <div id="finance-income" class="finance-tab">
+          <div class="toolbar no-print">
+            <div class="search-box"><input type="text" id="income-search" data-i18n-placeholder="search" placeholder="بحث..." oninput="renderFinance()"></div>
+            <button class="btn btn-primary" onclick="openFinanceModal('income')">➕ <span data-i18n="btn_add_income">إضافة وارد</span></button>
+          </div>
+          <div class="card"><table class="data-table"><thead><tr>
+            <th data-i18n="th_date">التاريخ</th><th data-i18n="th_description">البيان</th><th data-i18n="th_amount">المبلغ</th><th data-i18n="th_actions">إجراءات</th>
+          </tr></thead><tbody id="income-body"><tr><td colspan="4" class="empty-state" data-i18n="no_data">لا توجد بيانات</td></tr></tbody></table></div>
+        </div>
+        <div id="finance-expense" class="finance-tab" style="display:none;">
+          <div class="toolbar no-print">
+            <div class="search-box"><input type="text" id="expense-search" data-i18n-placeholder="search" placeholder="بحث..." oninput="renderFinance()"></div>
+            <button class="btn btn-primary" onclick="openFinanceModal('expense')">➕ <span data-i18n="btn_add_expense">إضافة مصروف</span></button>
+          </div>
+          <div class="card"><table class="data-table"><thead><tr>
+            <th data-i18n="th_date">التاريخ</th><th data-i18n="th_category">التصنيف</th><th data-i18n="th_description">البيان</th><th data-i18n="th_amount">المبلغ</th><th data-i18n="th_actions">إجراءات</th>
+          </tr></thead><tbody id="expense-body"><tr><td colspan="5" class="empty-state" data-i18n="no_data">لا توجد بيانات</td></tr></tbody></table></div>
+        </div>
+        <div id="finance-summary" class="finance-tab" style="display:none;">
+          <div class="kpi-grid" id="finance-kpis"></div>
+          <div class="chart-grid">
+            <div class="card"><div class="card-title"><span class="icon">📈</span> <span data-i18n="chart_profit">الربح الشهري</span></div><div class="chart-container"><canvas id="chart-profit"></canvas></div></div>
+            <div class="card"><div class="card-title"><span class="icon">🥧</span> <span data-i18n="chart_expense_cat">توزيع المصروفات</span></div><div class="chart-container"><canvas id="chart-expense-cat"></canvas></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="sec-reports" class="section">
+        <div class="toolbar no-print">
+          <select id="report-period" class="btn btn-secondary btn-sm" onchange="renderReports()" style="padding:8px 12px;">
+            <option value="daily" data-i18n="period_daily">يومي</option>
+            <option value="weekly" data-i18n="period_weekly">أسبوعي</option>
+            <option value="monthly" data-i18n="period_monthly">شهري</option>
+            <option value="yearly" data-i18n="period_yearly">سنوي</option>
+          </select>
+          <input type="date" id="report-date" class="btn btn-secondary btn-sm" style="padding:8px 12px; font-family:inherit;" onchange="renderReports()">
+          <button class="btn btn-success" onclick="exportReportXLSX()">📊 <span data-i18n="btn_export_xlsx">تصدير Excel</span></button>
+        </div>
+        <div class="kpi-grid" id="report-kpis"></div>
+        <div class="card">
+          <div class="card-title"><span class="icon">📋</span> <span data-i18n="report_sales">تقرير المبيعات</span></div>
+          <div class="table-responsive">
+            <table class="data-table" id="report-table">
+              <thead><tr>
+                <th data-i18n="th_date">التاريخ</th>
+                <th data-i18n="th_orders">الطلبات</th>
+                <th data-i18n="th_sales">المبيعات</th>
+                <th data-i18n="th_expenses">المصروفات</th>
+                <th data-i18n="th_profit">الربح</th>
+              </tr></thead>
+              <tbody id="report-body"><tr><td colspan="5" class="empty-state" data-i18n="no_data">لا توجد بيانات</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- INVOICES -->
+      <section id="sec-invoices" class="section">
+        <div class="toolbar no-print">
+          <div class="search-box"><input type="text" id="invoice-search" data-i18n-placeholder="search_invoices" placeholder="بحث..." oninput="renderInvoices()"></div>
+          <button class="btn btn-primary" onclick="openInvoiceModal()">➕ <span data-i18n="btn_create_invoice">فاتورة جديدة</span></button>
+        </div>
+        <div class="card">
+          <table class="data-table"><thead><tr>
+            <th data-i18n="th_inv_num">رقم الفاتورة</th>
+            <th data-i18n="th_customer">العميل</th>
+            <th data-i18n="th_total">المجموع</th>
+            <th data-i18n="th_date">التاريخ</th>
+            <th data-i18n="th_actions">إجراءات</th>
+          </tr></thead><tbody id="invoices-body"><tr><td colspan="5" class="empty-state" data-i18n="no_invoices">لا توجد فواتير</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <!-- USERS -->
+      <section id="sec-users" class="section">
+        <div class="toolbar no-print">
+          <button class="btn btn-primary" onclick="openUserModal()">➕ <span data-i18n="btn_add_user">إضافة مستخدم</span></button>
+        </div>
+        <div class="card">
+          <table class="data-table"><thead><tr>
+            <th data-i18n="th_name">الاسم</th>
+            <th data-i18n="th_username">اسم المستخدم</th>
+            <th data-i18n="th_role">الدور</th>
+            <th data-i18n="th_actions">إجراءات</th>
+          </tr></thead><tbody id="users-body"><tr><td colspan="4" class="empty-state" data-i18n="no_users">لا يوجد مستخدمون</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <!-- REMINDERS -->
+      <section id="sec-reminders" class="section">
+        <div class="toolbar no-print">
+          <button class="btn btn-primary" onclick="openReminderModal()">➕ <span data-i18n="btn_add_reminder">تذكير جديد</span></button>
+        </div>
+        <div class="card">
+          <table class="data-table"><thead><tr>
+            <th data-i18n="th_title">العنوان</th>
+            <th data-i18n="th_date">التاريخ</th>
+            <th data-i18n="th_type">النوع</th>
+            <th data-i18n="th_status">الحالة</th>
+            <th data-i18n="th_actions">إجراءات</th>
+          </tr></thead><tbody id="reminders-body"><tr><td colspan="5" class="empty-state" data-i18n="no_reminders">لا توجد تذكيرات</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="sec-settings" class="section">
+        <div class="card">
+          <div class="card-title"><span class="icon">🏢</span> <span data-i18n="settings_company">بيانات الشركة</span></div>
+          <div class="form-grid">
+            <div class="form-group"><label data-i18n="lbl_comp_name">اسم الشركة</label><input type="text" id="set-company" onchange="saveSetting('companyName',this.value)"></div>
+            <div class="form-group"><label data-i18n="lbl_comp_addr">العنوان</label><input type="text" id="set-address" onchange="saveSetting('companyAddress',this.value)"></div>
+            <div class="form-group"><label data-i18n="lbl_comp_phone">الهاتف</label><input type="text" id="set-phone" onchange="saveSetting('companyPhone',this.value)"></div>
+            <div class="form-group"><label data-i18n="lbl_comp_email">البريد</label><input type="text" id="set-email" onchange="saveSetting('companyEmail',this.value)"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="icon">💱</span> <span data-i18n="settings_currency">إعدادات العملة</span></div>
+          <div class="form-grid">
+            <div class="form-group"><label data-i18n="lbl_exchange">سعر صرف الدولار (بالليرة السورية)</label><input type="number" id="set-exchange" step="1" onchange="saveSetting('exchangeRate',this.value); updateAllCurrencyDisplays();"></div>
+            <div class="form-group"><label data-i18n="lbl_currency_default">العملة الافتراضية</label>
+              <select id="set-default-currency" onchange="saveSetting('defaultCurrency',this.value)">
+                <option value="SYP" data-i18n="cur_syp">ليرة سورية</option>
+                <option value="USD" data-i18n="cur_usd">دولار أمريكي</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="icon">💾</span> <span data-i18n="settings_backup">نسخة احتياطية</span></div>
+          <p style="color:var(--text-muted);margin-bottom:16px;" data-i18n="backup_desc">جميع البيانات تُحفظ داخل متصفحك فقط.</p>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="exportBackupJSON()">📤 <span data-i18n="btn_export_json">تصدير JSON</span></button>
+            <button class="btn btn-primary" onclick="exportBackupXLSX()">📊 <span data-i18n="btn_export_xlsx">تصدير Excel</span></button>
+            <button class="btn btn-warning" onclick="document.getElementById('import-file').click()">📥 <span data-i18n="btn_import_json">استيراد JSON</span></button>
+            <input type="file" id="import-file" style="display:none;" accept=".json" onchange="importBackupJSON(this)">
+            <button class="btn btn-danger" onclick="clearAllData()">🗑️ <span data-i18n="btn_clear_all">مسح كل البيانات</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- MODALS CONTAINER -->
+      <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()"></div>
+    </main>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+
+// =====================
+// I18N
+// =====================
+const i18n = {
+  ar: {
+    app_subtitle: "نظام إدارة الطباعة",
+    dashboard: "لوحة البيانات", products: "المنتجات", inventory: "المخزون", customers: "العملاء",
+    orders: "الطلبات", finance: "المالية", reports: "التقارير", invoices: "الفواتير",
+    users: "المستخدمون", reminders: "التذكيرات", settings: "الإعدادات",
+    chart_sales: "المبيعات الشهرية", chart_products: "أكثر المنتجات مبيعاً",
+    chart_filament: "مخزون الفيلامنت", chart_finance: "الإيرادات vs المصروفات",
+    recent_orders: "أحدث الطلبات", search_products: "ابحث في المنتجات...",
+    all_categories: "كل التصنيفات", all_types: "كل الأنواع", type_ready: "جاهز",
+    type_custom: "حسب الطلب", btn_add_product: "إضافة منتج", th_sku: "SKU",
+    th_name: "الاسم", th_category: "التصنيف", th_type: "النوع", th_stock: "المخزون",
+    th_cost: "التكلفة", th_price: "السعر", th_actions: "إجراءات", no_products: "لا توجد منتجات",
+    search_inventory: "ابحث في المخزون...", cat_filament: "فيلامنت", cat_spare: "قطع غيار",
+    cat_parts: "إكسسوارات", cat_addons: "إضافات", cat_other: "أخرى",
+    btn_add_item: "إضافة مادة", th_qty: "الكمية", th_unit: "الوحدة", th_min: "الحد الأدنى",
+    no_inventory: "لا توجد مواد", low_stock_title: "تنبيه: مخزون منخفض",
+    search_customers: "ابحث في العملاء...", btn_add_customer: "إضافة عميل",
+    th_phone: "الهاتف", th_whatsapp: "واتساب", th_address: "العنوان",
+    th_orders: "الطلبات", th_total_spent: "إجمالي الشراء", no_customers: "لا يوجد عملاء",
+    search_orders: "ابحث في الطلبات...", all_statuses: "كل الحالات",
+    status_pending: "قيد الانتظار", status_printing: "قيد الطباعة", status_ready: "جاهز",
+    status_delivered: "مُسلَّم", status_cancelled: "ملغى", btn_add_order: "طلب جديد",
+    th_order_id: "رقم الطلب", th_customer: "العميل", th_items: "البنود",
+    th_total: "المجموع", th_payment: "الدفع", th_date: "التاريخ", no_orders: "لا توجد طلبات",
+    tab_income: "الوارد", tab_expense: "الصادر", tab_summary: "الملخص",
+    btn_add_income: "إضافة وارد", btn_add_expense: "إضافة مصروف",
+    th_description: "البيان", th_amount: "المبلغ", no_data: "لا توجد بيانات",
+    chart_profit: "الربح الشهري", chart_expense_cat: "توزيع المصروفات",
+    period_daily: "يومي", period_weekly: "أسبوعي", period_monthly: "شهري",
+    period_yearly: "سنوي", btn_export_xlsx: "تصدير Excel", report_sales: "تقرير المبيعات",
+    th_sales: "المبيعات", th_expenses: "المصروفات", th_profit: "الربح",
+    search_invoices: "بحث في الفواتير...", btn_create_invoice: "فاتورة جديدة",
+    th_inv_num: "رقم الفاتورة", no_invoices: "لا توجد فواتير",
+    btn_add_user: "إضافة مستخدم", th_username: "اسم المستخدم", th_role: "الدور",
+    no_users: "لا يوجد مستخدمون", btn_add_reminder: "تذكير جديد",
+    th_title: "العنوان", th_type: "النوع", th_status: "الحالة", no_reminders: "لا توجد تذكيرات",
+    settings_company: "بيانات الشركة", lbl_comp_name: "اسم الشركة",
+    lbl_comp_addr: "العنوان", lbl_comp_phone: "الهاتف", lbl_comp_email: "البريد",
+    settings_currency: "إعدادات العملة", lbl_exchange: "سعر صرف الدولار (بالليرة السورية)",
+    lbl_currency_default: "العملة الافتراضية", cur_syp: "ليرة سورية", cur_usd: "دولار أمريكي",
+    settings_backup: "نسخة احتياطية", backup_desc: "جميع البيانات تُحفظ داخل متصفحك فقط.",
+    btn_export_json: "تصدير JSON", btn_import_json: "استيراد JSON", btn_clear_all: "مسح كل البيانات",
+    // Modal labels
+    modal_add_product: "إضافة منتج", modal_edit_product: "تعديل منتج",
+    lbl_sku: "رمز المنتج (SKU)", lbl_product_name: "اسم المنتج",
+    lbl_product_cat: "التصنيف", lbl_product_type: "نوع المنتج",
+    lbl_filament_type: "نوع الفيلامنت", lbl_weight: "الوزن (جرام)",
+    lbl_print_time: "وقت الطباعة (ساعات)", lbl_cost_price: "سعر التكلفة",
+    lbl_sell_price: "سعر البيع", lbl_stock: "المخزون", lbl_min_stock: "الحد الأدنى",
+    lbl_stl_path: "مسار ملف STL", lbl_product_image: "صورة المنتج",
+    lbl_notes: "ملاحظات", btn_save: "حفظ", btn_cancel: "إلغاء",
+    modal_add_inventory: "إضافة مادة خام", modal_edit_inventory: "تعديل مادة",
+    lbl_inv_name: "اسم المادة", lbl_inv_cat: "التصنيف", lbl_inv_qty: "الكمية",
+    lbl_inv_unit: "الوحدة", lbl_inv_min: "الحد الأدنى", lbl_inv_cost: "تكلفة الوحدة",
+    lbl_inv_supplier: "المورد", modal_add_customer: "إضافة عميل",
+    modal_edit_customer: "تعديل عميل", lbl_cust_name: "الاسم",
+    lbl_cust_phone: "الهاتف", lbl_cust_whatsapp: "واتساب",
+    lbl_cust_address: "العنوان", lbl_cust_fb: "فيسبوك", lbl_cust_ig: "انستغرام",
+    modal_add_order: "طلب جديد", modal_edit_order: "تعديل طلب",
+    lbl_order_customer: "العميل", lbl_order_status: "الحالة",
+    lbl_order_date: "تاريخ الطلب", lbl_print_start: "بدء الطباعة",
+    lbl_print_end: "انتهاء الطباعة", lbl_delivery_date: "تاريخ التسليم",
+    lbl_payment_status: "حالة الدفع", lbl_order_notes: "ملاحظات",
+    lbl_add_item: "إضافة بند", lbl_item_product: "المنتج", lbl_item_qty: "الكمية",
+    lbl_item_price: "السعر", btn_add_item_row: "+ بند", btn_remove: "حذف",
+    modal_add_income: "إضافة وارد", modal_add_expense: "إضافة مصروف",
+    lbl_finance_date: "التاريخ", lbl_finance_desc: "البيان",
+    lbl_finance_amount: "المبلغ", lbl_finance_cat: "التصنيف",
+    modal_add_user: "إضافة مستخدم", modal_edit_user: "تعديل مستخدم",
+    lbl_user_name: "الاسم الكامل", lbl_user_username: "اسم المستخدم",
+    lbl_user_password: "كلمة المرور", lbl_user_role: "الدور",
+    role_admin: "مدير", role_staff: "موظف", lbl_permissions: "الصلاحيات",
+    perm_products: "المنتجات", perm_inventory: "المخزون", perm_customers: "العملاء",
+    perm_orders: "الطلبات", perm_finance: "المالية", perm_reports: "التقارير",
+    perm_invoices: "الفواتير", perm_users: "المستخدمين", perm_settings: "الإعدادات",
+    modal_add_reminder: "تذكير جديد", lbl_reminder_title: "العنوان",
+    lbl_reminder_date: "التاريخ", lbl_reminder_type: "النوع",
+    reminder_type_order: "طلب", reminder_type_maintenance: "صيانة",
+    reminder_type_other: "أخرى", btn_done: "تم",
+    // Dashboard KPIs
+    kpi_sales_today: "مبيعات اليوم", kpi_orders_pending: "طلبات معلقة",
+    kpi_low_stock: "مواد منخفضة", kpi_profit_month: "ربح الشهر",
+    kpi_customers: "العملاء", kpi_avg_profit: "متوسط الربح",
+    // Order status
+    payment_paid: "مدفوع", payment_unpaid: "غير مدفوع", payment_partial: "دفعة جزئية",
+    // Toasts
+    toast_saved: "✅ تم الحفظ", toast_deleted: "🗑️ تم الحذف", toast_error: "❌ حدث خطأ",
+    toast_login_required: "🔒 يرجى تسجيل الدخول",
+    confirm_delete: "هل أنت متأكد من الحذف؟", confirm_clear: "هل أنت متأكد من مسح كل البيانات؟",
+    no_permission: "⛔ ليس لديك صلاحية",
+    // Invoice
+    modal_create_invoice: "إنشاء فاتورة", lbl_inv_number: "رقم الفاتورة",
+    lbl_inv_customer: "العميل", lbl_inv_date: "تاريخ الفاتورة",
+    lbl_inv_discount: "الخصم (%)", lbl_inv_tax: "الضريبة (%)",
+    btn_generate: "إنشاء", btn_print: "طباعة", btn_pdf: "تصدير PDF",
+    inv_title: "فاتورة ضريبية", inv_bill_to: "فاتورة إلى:",
+    th_desc: "البيان", th_qty: "الكمية", th_unit_price: "سعر الوحدة", th_total: "المجموع",
+    tf_subtotal: "المجموع الفرعي:", tf_discount: "الخصم:", tf_tax: "الضريبة:", tf_total: "الإجمالي:",
+    inv_footer: "شكراً لثقتكم بنا | 3Dzone 🖨️",
+    // Misc
+    search: "بحث...", all: "الكل", active: "نشط", done: "منتهي",
+    failed_prints: "طبعات فاشلة", btn_add_failed: "تسجيل فشل",
+    lbl_failed_reason: "سبب الفشل", lbl_failed_cost: "التكلفة",
+    tab_orders: "الطلبات", tab_failed: "فاشلة",
+    // Product categories
+    cat_tech: "قطع تقنية", cat_decor: "ديكور", cat_keychains: "ميداليات",
+    cat_toys: "ألعاب", cat_other_prod: "أخرى",
+  },
+  en: {
+    app_subtitle: "3D Printing Manager",
+    dashboard: "Dashboard", products: "Products", inventory: "Inventory", customers: "Customers",
+    orders: "Orders", finance: "Finance", reports: "Reports", invoices: "Invoices",
+    users: "Users", reminders: "Reminders", settings: "Settings",
+    chart_sales: "Monthly Sales", chart_products: "Top Products",
+    chart_filament: "Filament Stock", chart_finance: "Revenue vs Expenses",
+    recent_orders: "Recent Orders", search_products: "Search products...",
+    all_categories: "All Categories", all_types: "All Types", type_ready: "Ready",
+    type_custom: "Custom", btn_add_product: "Add Product", th_sku: "SKU",
+    th_name: "Name", th_category: "Category", th_type: "Type", th_stock: "Stock",
+    th_cost: "Cost", th_price: "Price", th_actions: "Actions", no_products: "No products",
+    search_inventory: "Search inventory...", cat_filament: "Filament", cat_spare: "Spare Parts",
+    cat_parts: "Accessories", cat_addons: "Addons", cat_other: "Other",
+    btn_add_item: "Add Item", th_qty: "Qty", th_unit: "Unit", th_min: "Min Stock",
+    no_inventory: "No inventory items", low_stock_title: "Alert: Low Stock",
+    search_customers: "Search customers...", btn_add_customer: "Add Customer",
+    th_phone: "Phone", th_whatsapp: "WhatsApp", th_address: "Address",
+    th_orders: "Orders", th_total_spent: "Total Spent", no_customers: "No customers",
+    search_orders: "Search orders...", all_statuses: "All Statuses",
+    status_pending: "Pending", status_printing: "Printing", status_ready: "Ready",
+    status_delivered: "Delivered", status_cancelled: "Cancelled", btn_add_order: "New Order",
+    th_order_id: "Order ID", th_customer: "Customer", th_items: "Items",
+    th_total: "Total", th_payment: "Payment", th_date: "Date", no_orders: "No orders",
+    tab_income: "Income", tab_expense: "Expense", tab_summary: "Summary",
+    btn_add_income: "Add Income", btn_add_expense: "Add Expense",
+    th_description: "Description", th_amount: "Amount", no_data: "No data",
+    chart_profit: "Monthly Profit", chart_expense_cat: "Expense Distribution",
+    period_daily: "Daily", period_weekly: "Weekly", period_monthly: "Monthly",
+    period_yearly: "Yearly", btn_export_xlsx: "Export Excel", report_sales: "Sales Report",
+    th_sales: "Sales", th_expenses: "Expenses", th_profit: "Profit",
+    search_invoices: "Search invoices...", btn_create_invoice: "New Invoice",
+    th_inv_num: "Invoice No", no_invoices: "No invoices",
+    btn_add_user: "Add User", th_username: "Username", th_role: "Role",
+    no_users: "No users", btn_add_reminder: "New Reminder",
+    th_title: "Title", th_type: "Type", th_status: "Status", no_reminders: "No reminders",
+    settings_company: "Company Info", lbl_comp_name: "Company Name",
+    lbl_comp_addr: "Address", lbl_comp_phone: "Phone", lbl_comp_email: "Email",
+    settings_currency: "Currency Settings", lbl_exchange: "USD Exchange Rate (SYP)",
+    lbl_currency_default: "Default Currency", cur_syp: "Syrian Pound", cur_usd: "US Dollar",
+    settings_backup: "Backup & Restore", backup_desc: "All data is stored in your browser only.",
+    btn_export_json: "Export JSON", btn_import_json: "Import JSON", btn_clear_all: "Clear All Data",
+    modal_add_product: "Add Product", modal_edit_product: "Edit Product",
+    lbl_sku: "SKU", lbl_product_name: "Product Name",
+    lbl_product_cat: "Category", lbl_product_type: "Product Type",
+    lbl_filament_type: "Filament Type", lbl_weight: "Weight (grams)",
+    lbl_print_time: "Print Time (hours)", lbl_cost_price: "Cost Price",
+    lbl_sell_price: "Sell Price", lbl_stock: "Stock", lbl_min_stock: "Min Stock",
+    lbl_stl_path: "STL File Path", lbl_product_image: "Product Image",
+    lbl_notes: "Notes", btn_save: "Save", btn_cancel: "Cancel",
+    modal_add_inventory: "Add Inventory", modal_edit_inventory: "Edit Inventory",
+    lbl_inv_name: "Item Name", lbl_inv_cat: "Category", lbl_inv_qty: "Quantity",
+    lbl_inv_unit: "Unit", lbl_inv_min: "Min Stock", lbl_inv_cost: "Unit Cost",
+    lbl_inv_supplier: "Supplier", modal_add_customer: "Add Customer",
+    modal_edit_customer: "Edit Customer", lbl_cust_name: "Name",
+    lbl_cust_phone: "Phone", lbl_cust_whatsapp: "WhatsApp",
+    lbl_cust_address: "Address", lbl_cust_fb: "Facebook", lbl_cust_ig: "Instagram",
+    modal_add_order: "New Order", modal_edit_order: "Edit Order",
+    lbl_order_customer: "Customer", lbl_order_status: "Status",
+    lbl_order_date: "Order Date", lbl_print_start: "Print Start",
+    lbl_print_end: "Print End", lbl_delivery_date: "Delivery Date",
+    lbl_payment_status: "Payment Status", lbl_order_notes: "Notes",
+    lbl_add_item: "Add Item", lbl_item_product: "Product", lbl_item_qty: "Qty",
+    lbl_item_price: "Price", btn_add_item_row: "+ Item", btn_remove: "Remove",
+    modal_add_income: "Add Income", modal_add_expense: "Add Expense",
+    lbl_finance_date: "Date", lbl_finance_desc: "Description",
+    lbl_finance_amount: "Amount", lbl_finance_cat: "Category",
+    modal_add_user: "Add User", modal_edit_user: "Edit User",
+    lbl_user_name: "Full Name", lbl_user_username: "Username",
+    lbl_user_password: "Password", lbl_user_role: "Role",
+    role_admin: "Admin", role_staff: "Staff", lbl_permissions: "Permissions",
+    perm_products: "Products", perm_inventory: "Inventory", perm_customers: "Customers",
+    perm_orders: "Orders", perm_finance: "Finance", perm_reports: "Reports",
+    perm_invoices: "Invoices", perm_users: "Users", perm_settings: "Settings",
+    modal_add_reminder: "New Reminder", lbl_reminder_title: "Title",
+    lbl_reminder_date: "Date", lbl_reminder_type: "Type",
+    reminder_type_order: "Order", reminder_type_maintenance: "Maintenance",
+    reminder_type_other: "Other", btn_done: "Done",
+    kpi_sales_today: "Today's Sales", kpi_orders_pending: "Pending Orders",
+    kpi_low_stock: "Low Stock Items", kpi_profit_month: "Monthly Profit",
+    kpi_customers: "Customers", kpi_avg_profit: "Avg Profit",
+    payment_paid: "Paid", payment_unpaid: "Unpaid", payment_partial: "Partial",
+    toast_saved: "✅ Saved", toast_deleted: "🗑️ Deleted", toast_error: "❌ Error",
+    toast_login_required: "🔒 Please login",
+    confirm_delete: "Are you sure you want to delete?", confirm_clear: "Are you sure to clear all data?",
+    no_permission: "⛔ No permission",
+    modal_create_invoice: "Create Invoice", lbl_inv_number: "Invoice Number",
+    lbl_inv_customer: "Customer", lbl_inv_date: "Invoice Date",
+    lbl_inv_discount: "Discount (%)", lbl_inv_tax: "Tax (%)",
+    btn_generate: "Generate", btn_print: "Print", btn_pdf: "Export PDF",
+    inv_title: "TAX INVOICE", inv_bill_to: "Bill To:",
+    th_desc: "Description", th_qty: "Qty", th_unit_price: "Unit Price", th_total: "Total",
+    tf_subtotal: "Subtotal:", tf_discount: "Discount:", tf_tax: "Tax:", tf_total: "Total:",
+    inv_footer: "Thank you for your business | 3Dzone 🖨️",
+    search: "Search...", all: "All", active: "Active", done: "Done",
+    failed_prints: "Failed Prints", btn_add_failed: "Log Failed Print",
+    lbl_failed_reason: "Reason", lbl_failed_cost: "Cost",
+    tab_orders: "Orders", tab_failed: "Failed",
+    cat_tech: "Tech Parts", cat_decor: "Decor", cat_keychains: "Keychains",
+    cat_toys: "Toys", cat_other_prod: "Other",
+  }
+};
+
+let currentLang = 'ar';
+let currentCurrency = 'SYP';
+let currentUser = null;
+let charts = {};
+
+function t(key) { return i18n[currentLang][key] || key; }
+
+function setLang(lang) {
+  currentLang = lang;
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.body.lang = lang;
+  document.body.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.getElementById('lang-ar').classList.toggle('active', lang === 'ar');
+  document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (i18n[lang][key]) el.textContent = i18n[lang][key];
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (i18n[lang][key]) el.placeholder = i18n[lang][key];
+  });
+  localStorage.setItem('3dz_lang', lang);
+  buildSidebar();
+  renderAll();
+}
+
+function setCurrency(cur) {
+  currentCurrency = cur;
+  document.getElementById('cur-syp').classList.toggle('active', cur === 'SYP');
+  document.getElementById('cur-usd').classList.toggle('active', cur === 'USD');
+  localStorage.setItem('3dz_currency', cur);
+  renderAll();
+}
+
+function formatMoney(amount, currency) {
+  const cur = currency || currentCurrency;
+  const rate = parseFloat(getSetting('exchangeRate')) || 15000;
+  let val = parseFloat(amount) || 0;
+  if (cur === 'SYP' && currentCurrency === 'USD') val = val / rate;
+  else if (cur === 'USD' && currentCurrency === 'SYP') val = val * rate;
+  const decimals = currentCurrency === 'SYP' ? 0 : 2;
+  const sym = currentCurrency === 'SYP' ? 'ل.س' : '$';
+  return sym + ' ' + val.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function formatMoneyDual(amount) {
+  const rate = parseFloat(getSetting('exchangeRate')) || 15000;
+  const val = parseFloat(amount) || 0;
+  if (currentCurrency === 'SYP') {
+    return 'ل.س ' + Math.round(val).toLocaleString() + ' | $ ' + (val / rate).toFixed(2);
+  } else {
+    return '$ ' + val.toFixed(2) + ' | ل.س ' + Math.round(val * rate).toLocaleString();
+  }
+}
+
+function formatDate(d) {
+  if (!d) return '--';
+  const date = new Date(d);
+  return date.toLocaleDateString(currentLang === 'ar' ? 'ar-SY' : 'en-US');
+}
+
+function showToast(msg, type='info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  toast.style.borderColor = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--border)';
+  container.appendChild(toast);
+  setTimeout(() => { toast.remove(); }, 3000);
+}
+
+// =====================
+// DATA LAYER
+// =====================
+const DB = {
+  get(key, def) { try { return JSON.parse(localStorage.getItem('3dz_' + key) || 'null') || def; } catch(e) { return def; } },
+  set(key, val) { localStorage.setItem('3dz_' + key, JSON.stringify(val)); },
+};
+
+
+// =====================
+// HELPERS: security, ids, stock, cost calculator
+// =====================
+const L = (ar, en) => currentLang === 'ar' ? ar : en;
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let _uidSeq = 0;
+const uid = () => Date.now() * 1000 + (_uidSeq++ % 1000);
+const toHex = buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+const newSalt = () => toHex(crypto.getRandomValues(new Uint8Array(16)));
+async function hashPassword(password, salt) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(String(password)), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: enc.encode(salt), iterations: 100000, hash: 'SHA-256' }, key, 256);
+  return toHex(bits);
+}
+// Converts any legacy plaintext passwords to salted hashes (runs on every start and after import)
+async function migratePasswords() {
+  const users = DB.get('users', []);
+  let changed = false;
+  for (const u of users) {
+    if (u.password !== undefined) {
+      if (u.password === 'admin') u.mustChange = true;
+      u.salt = newSalt();
+      u.passHash = await hashPassword(u.password, u.salt);
+      delete u.password;
+      changed = true;
+    }
+  }
+  if (changed) DB.set('users', users);
+}
+function setCurrentUser(u) {
+  const c = { ...u };
+  delete c.passHash; delete c.salt; delete c.password;
+  currentUser = c;
+}
+function nextInvoiceNumber() {
+  const nums = DB.get('invoices', []).map(i => parseInt(String(i.number).replace(/\D/g, ''))).filter(Number.isFinite);
+  return 'INV-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, '0');
+}
+const isCancelled = o => ['cancelled', 'canceled'].includes(o && o.status);
+function adjustStock(items, sign, products) {
+  (items || []).forEach(it => {
+    const prod = products.find(p => p.id == it.productId);
+    if (prod && prod.type === 'ready') prod.stock = Math.max(0, (parseInt(prod.stock) || 0) + sign * (parseInt(it.qty) || 0));
+  });
+}
+
+// ---- Print cost calculator (all money values in SYP) ----
+function calcPrintCost(i) {
+  const n = v => Math.max(0, parseFloat(v) || 0);
+  const grams = n(i.grams) + n(i.supportG), hours = n(i.hours);
+  const hpd = n(i.hoursPerDay) || 4, life = n(i.lifeYears) || 5;
+  const material = grams * n(i.filamentKg) / 1000;
+  const energy = n(i.watts) / 1000 * hours * n(i.kwh);
+  const printer = n(i.printerPrice) / (life * 365 * hpd) * hours;
+  const maintenance = n(i.maintYear) / (365 * hpd) * hours;
+  const labor = n(i.laborRate) * n(i.laborMin) / 60;
+  const overhead = n(i.overheadMonth) / (n(i.perMonth) || 1);
+  const packaging = n(i.packaging);
+  const fail = Math.min(n(i.failPct) / 100, 0.95);
+  // Failed prints waste material, power and machine time only (not labor/packaging/overhead)
+  const cost = (material + energy + printer + maintenance) / (1 - fail) + labor + overhead + packaging;
+  const margin = Math.min(n(i.marginPct) / 100, 0.95);
+  return { material, energy, printer, maintenance, labor, overhead, packaging, fail, cost, price: cost / (1 - margin) };
+}
+const CALC_DEFAULTS = { filamentKg: '', kwh: '', watts: 150, printerPrice: '', lifeYears: 5, hoursPerDay: 4, maintYear: '', laborRate: '', laborMin: 10, packaging: '', overheadMonth: '', perMonth: 100, supportG: 0, failPct: 5, marginPct: 30 };
+const CALC_FIELDS = [
+  ['filamentKg', 'سعر كيلو الفيلامنت', 'Filament price / kg'], ['supportG', 'فاقد ودعامات (غرام)', 'Supports & waste (g)'],
+  ['kwh', 'سعر الكيلوواط ساعة', 'Electricity / kWh'], ['watts', 'استهلاك الطابعة (واط)', 'Printer power (W)'],
+  ['printerPrice', 'سعر الطابعة', 'Printer price'], ['lifeYears', 'عمر الطابعة (سنوات)', 'Printer life (years)'],
+  ['hoursPerDay', 'ساعات الطباعة يومياً', 'Print hours / day'], ['maintYear', 'صيانة سنوية', 'Maintenance / year'],
+  ['laborRate', 'أجرة الساعة', 'Labor / hour'], ['laborMin', 'دقائق عمل يدوي', 'Manual minutes'],
+  ['packaging', 'تغليف لكل قطعة', 'Packaging / unit'], ['overheadMonth', 'مصاريف شهرية ثابتة', 'Monthly overhead'],
+  ['perMonth', 'عدد القطع شهرياً', 'Units per month'], ['failPct', 'نسبة الفشل %', 'Failure rate %'],
+  ['marginPct', 'هامش الربح % (من سعر البيع)', 'Profit margin % (of price)'],
+];
+function costCalcHtml() {
+  const saved = { ...CALC_DEFAULTS, ...DB.get('calc', {}) };
+  return `
+    <details style="margin-top:16px;background:var(--surface-light);border-radius:12px;padding:14px;">
+      <summary style="cursor:pointer;font-weight:700;">🧮 ${L('حاسبة تكلفة الطباعة (بالليرة السورية)', 'Print cost calculator (SYP)')}</summary>
+      <p style="color:var(--text-muted);font-size:0.8rem;margin:10px 0;">${L('تستخدم الوزن (غرام) ووقت الطباعة (ساعات) من الحقول أعلاه.', 'Uses weight (g) and print time (hours) from the fields above.')}</p>
+      <div class="form-grid">
+        ${CALC_FIELDS.map(([k, ar, en]) => `<div class="form-group"><label>${L(ar, en)}</label><input type="number" min="0" step="any" id="calc-${k}" value="${esc(saved[k])}"></div>`).join('')}
+      </div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="runCostCalc()">${L('احسب', 'Calculate')}</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="applyCostCalc('cost')">${L('تطبيق على التكلفة', 'Apply to cost')}</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="applyCostCalc('price')">${L('تطبيق على سعر البيع', 'Apply to sell price')}</button>
+      </div>
+      <div id="calc-result" style="margin-top:12px;font-size:0.9rem;line-height:1.9;"></div>
+    </details>`;
+}
+let _lastCalc = null;
+function runCostCalc() {
+  const inp = {};
+  CALC_FIELDS.forEach(([k]) => { inp[k] = document.getElementById('calc-' + k).value; });
+  DB.set('calc', inp);
+  inp.grams = document.getElementById('p-weight').value;
+  inp.hours = document.getElementById('p-time').value;
+  const r = calcPrintCost(inp);
+  _lastCalc = r;
+  const row = (label, v) => `<div style="display:flex;justify-content:space-between;"><span>${label}</span><span>${formatMoney(v, 'SYP')}</span></div>`;
+  document.getElementById('calc-result').innerHTML =
+    row(L('فيلامنت', 'Filament'), r.material) + row(L('كهرباء', 'Electricity'), r.energy) +
+    row(L('إهلاك الطابعة', 'Printer depreciation'), r.printer) + row(L('صيانة', 'Maintenance'), r.maintenance) +
+    row(L('عمل يدوي', 'Labor'), r.labor) + row(L('مصاريف ثابتة', 'Overhead'), r.overhead) + row(L('تغليف', 'Packaging'), r.packaging) +
+    `<hr style="border-color:var(--border);margin:6px 0;">` +
+    `<div style="font-weight:800;display:flex;justify-content:space-between;"><span>${L('التكلفة النهائية (مع الفشل)', 'Total cost (incl. failures)')}</span><span>${formatMoney(r.cost, 'SYP')}</span></div>` +
+    `<div style="font-weight:800;color:var(--success);display:flex;justify-content:space-between;"><span>${L('سعر البيع المقترح', 'Suggested price')}</span><span>${formatMoney(r.price, 'SYP')}</span></div>`;
+}
+function applyCostCalc(which) {
+  runCostCalc();
+  if (!_lastCalc) return;
+  document.getElementById(which === 'cost' ? 'p-cost' : 'p-price').value = Math.round(which === 'cost' ? _lastCalc.cost : _lastCalc.price);
+  showToast(t('toast_saved'));
+}
+function openChangePasswordModal() {
+  const content = `
+    <div class="form-grid" style="max-width:320px;margin:0 auto;">
+      <p style="grid-column:1/-1;color:var(--text-muted);">${L('يجب تغيير كلمة المرور الافتراضية قبل المتابعة.', 'You must change the default password before continuing.')}</p>
+      <div class="form-group"><label>${L('كلمة المرور الجديدة', 'New password')}</label><input type="password" id="cp-new"></div>
+      <div class="form-group"><label>${L('تأكيد كلمة المرور', 'Confirm password')}</label><input type="password" id="cp-confirm"></div>
+    </div>`;
+  openModal(L('تغيير كلمة المرور', 'Change password'), content, async () => {
+    const a = document.getElementById('cp-new').value, b = document.getElementById('cp-confirm').value;
+    if (a.length < 6 || a === 'admin') { showToast(L('6 أحرف على الأقل ولا تستخدم admin', 'At least 6 characters, not "admin"'), 'error'); return; }
+    if (a !== b) { showToast(L('كلمتا المرور غير متطابقتين', 'Passwords do not match'), 'error'); return; }
+    const users = DB.get('users', []);
+    const u = users.find(x => x.id === currentUser.id);
+    if (!u) return;
+    u.salt = newSalt(); u.passHash = await hashPassword(a, u.salt); delete u.mustChange;
+    DB.set('users', users);
+    currentUser.mustChange = false;
+    showToast(t('toast_saved'));
+    closeModal();
+  });
+}
+
+function getSetting(key) {
+  const s = DB.get('settings', {});
+  const defaults = { exchangeRate: 15000, defaultCurrency: 'SYP', companyName: '3Dzone', companyAddress: '', companyPhone: '', companyEmail: '' };
+  return s[key] !== undefined ? s[key] : defaults[key];
+}
+function saveSetting(key, val) {
+  const s = DB.get('settings', {});
+  s[key] = val;
+  DB.set('settings', s);
+  showToast(t('toast_saved'));
+}
+
+function initData() {
+  if (!DB.get('products', null)) DB.set('products', []);
+  if (!DB.get('inventory', null)) DB.set('inventory', []);
+  if (!DB.get('customers', null)) DB.set('customers', []);
+  if (!DB.get('orders', null)) DB.set('orders', []);
+  if (!DB.get('income', null)) DB.set('income', []);
+  if (!DB.get('expenses', null)) DB.set('expenses', []);
+  if (!DB.get('invoices', null)) DB.set('invoices', []);
+  if (!DB.get('users', null)) DB.set('users', [{id:1, name:'Admin', username:'admin', password:'admin', mustChange:true, role:'admin', permissions:['all'], createdAt: new Date().toISOString()}]);
+  if (!DB.get('reminders', null)) DB.set('reminders', []);
+  if (!DB.get('failedPrints', null)) DB.set('failedPrints', []);
+  if (!DB.get('settings', null)) DB.set('settings', { exchangeRate: 15000, defaultCurrency: 'SYP', companyName: '3Dzone', companyAddress: '', companyPhone: '', companyEmail: '' });
+}
+
+// =====================
+// AUTH & PERMISSIONS
+// =====================
+async function login(username, password) {
+  const u = DB.get('users', []).find(x => x.username === username);
+  if (!u || !u.salt || !u.passHash) return false;
+  if (await hashPassword(password, u.salt) !== u.passHash) return false;
+  setCurrentUser(u);
+  localStorage.setItem('3dz_session', JSON.stringify({ id: u.id }));
+  showToast('✅ ' + (currentLang === 'ar' ? 'تم تسجيل الدخول' : 'Logged in'));
+  buildSidebar();
+  renderAll();
+  return true;
+}
+
+function logout() {
+  currentUser = null;
+  localStorage.removeItem('3dz_session');
+  showToast('👋 ' + (currentLang === 'ar' ? 'تم تسجيل الخروج' : 'Logged out'));
+  buildSidebar();
+}
+
+function hasPermission(perm) {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin' || currentUser.permissions.includes('all')) return true;
+  return currentUser.permissions.includes(perm);
+}
+
+function checkPerm(perm) {
+  if (!hasPermission(perm)) { showToast(t('no_permission'), 'error'); return false; }
+  return true;
+}
+
+// =====================
+// NAVIGATION
+// =====================
+const navItems = [
+  { id:'dashboard', icon:'📊', perm:'dashboard' },
+  { id:'products', icon:'📦', perm:'products' },
+  { id:'inventory', icon:'🧵', perm:'inventory' },
+  { id:'customers', icon:'👥', perm:'customers' },
+  { id:'orders', icon:'🛒', perm:'orders' },
+  { id:'finance', icon:'💰', perm:'finance' },
+  { id:'reports', icon:'📈', perm:'reports' },
+  { id:'invoices', icon:'🧾', perm:'invoices' },
+  { id:'users', icon:'🔐', perm:'users' },
+  { id:'reminders', icon:'🔔', perm:'reminders' },
+  { id:'settings', icon:'⚙️', perm:'settings' },
+];
+
+function buildSidebar() {
+  const nav = document.getElementById('sidebar-nav');
+  let html = '';
+  navItems.forEach(item => {
+    if (!currentUser && item.id !== 'dashboard') return;
+    if (currentUser && !hasPermission(item.perm)) return;
+    html += `<div class="nav-item" onclick="showSection('${item.id}')" data-section="${item.id}">
+      <span>${item.icon}</span> <span data-i18n="${item.id}">${t(item.id)}</span>
+    </div>`;
+  });
+  nav.innerHTML = html;
+  if (currentUser) {
+    document.getElementById('user-name').textContent = currentUser.name;
+    document.getElementById('user-role').textContent = t('role_' + currentUser.role);
+    document.getElementById('sidebar-user').innerHTML = `
+      <div class="avatar">${esc(currentUser.name.charAt(0).toUpperCase())}</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;color:var(--text);">${esc(currentUser.name)}</div>
+        <div style="font-size:0.75rem;">${t('role_' + currentUser.role)}</div>
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick="logout()" style="padding:4px 10px;font-size:0.75rem;">🚪</button>
+    `;
+  } else {
+    document.getElementById('sidebar-user').innerHTML = `
+      <div class="avatar">?</div>
+      <div>
+        <div style="font-weight:700;color:var(--text);">Guest</div>
+        <div style="font-size:0.75rem;cursor:pointer;color:var(--primary);" onclick="showLoginModal()">${currentLang==='ar'?'تسجيل الدخول':'Login'}</div>
+      </div>
+    `;
+  }
+}
+
+function showSection(id) {
+  if (!currentUser && id !== 'dashboard') { showToast(t('toast_login_required')); return; }
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.section === id));
+  document.getElementById('page-title').textContent = t(id);
+  document.getElementById('page-title').setAttribute('data-i18n', id);
+  renderSection(id);
+}
+
+function renderSection(id) {
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'products') renderProducts();
+  if (id === 'inventory') renderInventory();
+  if (id === 'customers') renderCustomers();
+  if (id === 'orders') renderOrders();
+  if (id === 'finance') renderFinance();
+  if (id === 'reports') renderReports();
+  if (id === 'invoices') renderInvoices();
+  if (id === 'users') renderUsers();
+  if (id === 'reminders') renderReminders();
+  if (id === 'settings') renderSettings();
+}
+
+function renderAll() {
+  const active = document.querySelector('.section.active');
+  if (active) renderSection(active.id.replace('sec-',''));
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+// =====================
+// MODAL SYSTEM
+// =====================
+function openModal(title, content, onSave) {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <h3>${title}</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">${content}</div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">${t('btn_cancel')}</button>
+        <button class="btn btn-primary" id="modal-save-btn">${t('btn_save')}</button>
+      </div>
+    </div>
+  `;
+  overlay.classList.add('active');
+  if (onSave) {
+    document.getElementById('modal-save-btn').onclick = () => { onSave(); };
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+}
+
+// =====================
+// DASHBOARD
+// =====================
+function renderDashboard() {
+  const orders = DB.get('orders', []);
+  const expenses = DB.get('expenses', []);
+  const products = DB.get('products', []);
+  const inventory = DB.get('inventory', []);
+  const customers = DB.get('customers', []);
+
+  const today = new Date().toISOString().split('T')[0];
+  const todaySales = orders.filter(o => o.date && o.date.startsWith(today) && o.status === 'delivered')
+    .reduce((s, o) => s + (parseFloat(o.total) || 0), 0);
+  const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'printing').length;
+  const lowStock = [...products.filter(p => parseFloat(p.stock) <= parseFloat(p.minStock || 0)),
+                    ...inventory.filter(i => parseFloat(i.quantity) <= parseFloat(i.minStock || 0))].length;
+
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const monthSales = orders.filter(o => o.date && o.date.startsWith(thisMonth) && o.status === 'delivered')
+    .reduce((s, o) => s + (parseFloat(o.total) || 0), 0);
+  const monthExpenses = expenses.filter(e => e.date && e.date.startsWith(thisMonth))
+    .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const monthProfit = monthSales - monthExpenses;
+
+  const avgProfit = orders.filter(o => o.status === 'delivered').length > 0
+    ? monthProfit / orders.filter(o => o.status === 'delivered').length : 0;
+
+  const kpis = [
+    { label: t('kpi_sales_today'), value: formatMoney(todaySales), change: '' },
+    { label: t('kpi_orders_pending'), value: pendingOrders, change: '' },
+    { label: t('kpi_low_stock'), value: lowStock, change: lowStock > 0 ? '⚠️' : '✅' },
+    { label: t('kpi_profit_month'), value: formatMoney(monthProfit), change: '' },
+    { label: t('kpi_customers'), value: customers.length, change: '' },
+    { label: t('kpi_avg_profit'), value: formatMoney(avgProfit), change: '' },
+  ];
+
+  document.getElementById('dashboard-kpis').innerHTML = kpis.map(k => `
+    <div class="kpi-card">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+      ${k.change ? `<div class="kpi-change">${k.change}</div>` : ''}
+    </div>
+  `).join('');
+
+  // Recent orders
+  const recent = orders.slice().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+  document.getElementById('dashboard-orders-body').innerHTML = recent.length ? recent.map(o => {
+    const cust = customers.find(c => c.id == o.customerId);
+    return `<tr>
+      <td>#${o.id}</td>
+      <td>${cust ? esc(cust.name) : '--'}</td>
+      <td><span class="status-badge status-${o.status}">${t('status_' + o.status)}</span></td>
+      <td>${formatMoney(o.total)}</td>
+      <td>${formatDate(o.date)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" class="empty-state">${t('no_orders')}</td></tr>`;
+
+  // Charts
+  renderDashboardCharts();
+}
+
+function renderDashboardCharts() {
+  const orders = DB.get('orders', []);
+  const expenses = DB.get('expenses', []);
+  const products = DB.get('products', []);
+  const inventory = DB.get('inventory', []);
+
+  // Sales chart (last 6 months)
+  const months = [];
+  const salesData = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const m = d.toISOString().slice(0, 7);
+    months.push(d.toLocaleDateString(currentLang === 'ar' ? 'ar-SY' : 'en-US', {month:'short'}));
+    salesData.push(orders.filter(o => o.date && o.date.startsWith(m) && o.status === 'delivered')
+      .reduce((s, o) => s + (parseFloat(o.total) || 0), 0));
+  }
+
+  if (charts.sales) charts.sales.destroy();
+  charts.sales = new Chart(document.getElementById('chart-sales'), {
+    type: 'bar', data: { labels: months, datasets: [{ label: t('chart_sales'), data: salesData, backgroundColor: 'rgba(99,102,241,0.6)', borderColor: '#6366f1', borderWidth: 1, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } }
+  });
+
+  // Top products
+  const prodSales = {};
+  orders.forEach(o => { (o.items || []).forEach(it => { prodSales[it.productId] = (prodSales[it.productId] || 0) + (parseFloat(it.qty) || 0); }); });
+  const topProds = Object.entries(prodSales).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  if (charts.products) charts.products.destroy();
+  charts.products = new Chart(document.getElementById('chart-products'), {
+    type: 'doughnut', data: { labels: topProds.map(p => { const pr = products.find(x => x.id == p[0]); return pr ? pr.name : p[0]; }), datasets: [{ data: topProds.map(p => p[1]), backgroundColor: ['#6366f1','#ec4899','#06b6d4','#22c55e','#f59e0b'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } } }
+  });
+
+  // Filament stock
+  const filaments = inventory.filter(i => i.category === 'filament');
+  if (charts.filament) charts.filament.destroy();
+  charts.filament = new Chart(document.getElementById('chart-filament'), {
+    type: 'bar', data: { labels: filaments.map(f => f.name), datasets: [{ label: t('th_qty'), data: filaments.map(f => parseFloat(f.quantity) || 0), backgroundColor: 'rgba(6,182,212,0.6)', borderColor: '#06b6d4', borderWidth: 1, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } } }
+  });
+
+  // Finance comparison
+  const finMonths = []; const revData = []; const expData = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const m = d.toISOString().slice(0, 7);
+    finMonths.push(d.toLocaleDateString(currentLang === 'ar' ? 'ar-SY' : 'en-US', {month:'short'}));
+    revData.push(orders.filter(o => o.date && o.date.startsWith(m) && o.status === 'delivered').reduce((s, o) => s + (parseFloat(o.total) || 0), 0));
+    expData.push(expenses.filter(e => e.date && e.date.startsWith(m)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0));
+  }
+  if (charts.finance) charts.finance.destroy();
+  charts.finance = new Chart(document.getElementById('chart-finance'), {
+    type: 'line', data: { labels: finMonths, datasets: [
+      { label: currentLang === 'ar' ? 'المبيعات' : 'Sales', data: revData, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.4 },
+      { label: currentLang === 'ar' ? 'المصروفات' : 'Expenses', data: expData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.4 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } }
+  });
+}
+
+// =====================
+// PRODUCTS
+// =====================
+function renderProducts() {
+  const products = DB.get('products', []);
+  const search = document.getElementById('product-search')?.value.toLowerCase() || '';
+  const catFilter = document.getElementById('product-filter-cat')?.value || '';
+  const typeFilter = document.getElementById('product-filter-type')?.value || '';
+
+  // Update category filter options
+  const cats = [...new Set(products.map(p => p.category).filter(Boolean))];
+  const catSelect = document.getElementById('product-filter-cat');
+  if (catSelect) {
+    const currentVal = catSelect.value;
+    catSelect.innerHTML = `<option value="">${t('all_categories')}</option>` +
+      cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    catSelect.value = currentVal;
+  }
+
+  const filtered = products.filter(p => {
+    const matchSearch = !search || (p.name && p.name.toLowerCase().includes(search)) || (p.sku && p.sku.toLowerCase().includes(search));
+    const matchCat = !catFilter || p.category === catFilter;
+    const matchType = !typeFilter || p.type === typeFilter;
+    return matchSearch && matchCat && matchType;
+  });
+
+  const tbody = document.getElementById('products-body');
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${t('no_products')}</td></tr>`; return; }
+
+  tbody.innerHTML = filtered.map(p => {
+    const stockLow = parseFloat(p.stock) <= parseFloat(p.minStock || 0);
+    return `<tr>
+      <td><code>${esc(p.sku || '--')}</code></td>
+      <td><strong>${esc(p.name)}</strong>${p.stlPath ? `<br><a class="file-link" href="file://${esc(p.stlPath)}" target="_blank">📁 STL</a>` : ''}</td>
+      <td>${esc(p.category || '--')}</td>
+      <td>${p.type === 'ready' ? t('type_ready') : t('type_custom')}</td>
+      <td>${stockLow ? '<span style="color:var(--danger);font-weight:700;">' : ''}${p.stock || 0}${stockLow ? '</span>' : ''}</td>
+      <td>${formatMoney(p.costPrice)}</td>
+      <td>${formatMoney(p.sellPrice)}</td>
+      <td class="actions no-print">
+        <button class="btn btn-sm btn-info" onclick="generateProductBarcode(${p.id})">🏷️</button>
+        <button class="btn btn-sm btn-primary" onclick="editProduct(${p.id})">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteProduct(${p.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openProductModal(product) {
+  if (!checkPerm('products')) return;
+  const isEdit = !!product;
+  const p = product || {};
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_sku')}</label><input type="text" id="p-sku" value="${esc(p.sku || '')}"></div>
+      <div class="form-group"><label>${t('lbl_product_name')}</label><input type="text" id="p-name" value="${esc(p.name || '')}"></div>
+      <div class="form-group"><label>${t('lbl_product_cat')}</label>
+        <select id="p-category">
+          <option value="">--</option>
+          <option value="${t('cat_tech')}" ${p.category===t('cat_tech')?'selected':''}>${t('cat_tech')}</option>
+          <option value="${t('cat_decor')}" ${p.category===t('cat_decor')?'selected':''}>${t('cat_decor')}</option>
+          <option value="${t('cat_keychains')}" ${p.category===t('cat_keychains')?'selected':''}>${t('cat_keychains')}</option>
+          <option value="${t('cat_toys')}" ${p.category===t('cat_toys')?'selected':''}>${t('cat_toys')}</option>
+          <option value="${t('cat_other_prod')}" ${p.category===t('cat_other_prod')?'selected':''}>${t('cat_other_prod')}</option>
+        </select>
+      </div>
+      <div class="form-group"><label>${t('lbl_product_type')}</label>
+        <select id="p-type"><option value="ready" ${p.type==='ready'?'selected':''}>${t('type_ready')}</option><option value="custom" ${p.type==='custom'?'selected':''}>${t('type_custom')}</option></select>
+      </div>
+      <div class="form-group"><label>${t('lbl_filament_type')}</label><input type="text" id="p-filament" value="${esc(p.filamentType || '')}" placeholder="PLA, PETG..."></div>
+      <div class="form-group"><label>${t('lbl_weight')}</label><input type="number" id="p-weight" value="${p.weight || ''}" step="0.1"></div>
+      <div class="form-group"><label>${t('lbl_print_time')}</label><input type="number" id="p-time" value="${p.printTime || ''}" step="0.1"></div>
+      <div class="form-group"><label>${t('lbl_cost_price')}</label><input type="number" id="p-cost" value="${p.costPrice || ''}" step="0.01"></div>
+      <div class="form-group"><label>${t('lbl_sell_price')}</label><input type="number" id="p-price" value="${p.sellPrice || ''}" step="0.01"></div>
+      <div class="form-group"><label>${t('lbl_stock')}</label><input type="number" id="p-stock" value="${p.stock || 0}"></div>
+      <div class="form-group"><label>${t('lbl_min_stock')}</label><input type="number" id="p-min" value="${p.minStock || 0}"></div>
+      <div class="form-group"><label>${t('lbl_stl_path')}</label><input type="text" id="p-stl" value="${esc(p.stlPath || '')}" placeholder="C:\Models\file.stl"></div>
+      <div class="form-group" style="grid-column:span 2;"><label>${t('lbl_notes')}</label><textarea id="p-notes" rows="2">${esc(p.notes || '')}</textarea></div>
+    </div>
+    ${costCalcHtml()}
+    ${p.id ? `<div style="margin-top:16px;text-align:center;"><div id="product-barcode-${p.id}" class="barcode-box"></div></div>` : ''}
+  `;
+  openModal(t(isEdit ? 'modal_edit_product' : 'modal_add_product'), content, () => {
+    const data = {
+      id: p.id || uid(),
+      sku: document.getElementById('p-sku').value,
+      name: document.getElementById('p-name').value,
+      category: document.getElementById('p-category').value,
+      type: document.getElementById('p-type').value,
+      filamentType: document.getElementById('p-filament').value,
+      weight: parseFloat(document.getElementById('p-weight').value) || 0,
+      printTime: parseFloat(document.getElementById('p-time').value) || 0,
+      costPrice: parseFloat(document.getElementById('p-cost').value) || 0,
+      sellPrice: parseFloat(document.getElementById('p-price').value) || 0,
+      stock: parseInt(document.getElementById('p-stock').value) || 0,
+      minStock: parseInt(document.getElementById('p-min').value) || 0,
+      stlPath: document.getElementById('p-stl').value,
+      notes: document.getElementById('p-notes').value,
+      createdAt: p.createdAt || new Date().toISOString()
+    };
+    let products = DB.get('products', []);
+    if (isEdit) products = products.map(x => x.id === p.id ? data : x);
+    else products.push(data);
+    DB.set('products', products);
+    showToast(t('toast_saved'));
+    closeModal();
+    renderProducts();
+    renderDashboard();
+  });
+  if (p.id) setTimeout(() => generateProductBarcode(p.id), 100);
+}
+
+function editProduct(id) {
+  const p = DB.get('products', []).find(x => x.id === id);
+  if (p) openProductModal(p);
+}
+
+function deleteProduct(id) {
+  if (!confirm(t('confirm_delete'))) return;
+  DB.set('products', DB.get('products', []).filter(x => x.id !== id));
+  showToast(t('toast_deleted'));
+  renderProducts();
+  renderDashboard();
+}
+
+function generateProductBarcode(id) {
+  const p = DB.get('products', []).find(x => x.id === id);
+  if (!p || !p.sku) return;
+  const container = document.getElementById(`product-barcode-${id}`);
+  if (!container) return;
+  container.innerHTML = '';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('id', `bc-${id}`);
+  container.appendChild(svg);
+  try { JsBarcode(`#bc-${id}`, p.sku, { format: 'CODE128', width: 2, height: 50, displayValue: true }); }
+  catch(e) { container.innerHTML = '<div style="color:var(--danger);">Barcode Error</div>'; }
+}
+
+// =====================
+// INVENTORY
+// =====================
+function renderInventory() {
+  const inventory = DB.get('inventory', []);
+  const search = document.getElementById('inventory-search')?.value.toLowerCase() || '';
+  const catFilter = document.getElementById('inventory-filter-cat')?.value || '';
+
+  const filtered = inventory.filter(i => {
+    const matchSearch = !search || (i.name && i.name.toLowerCase().includes(search));
+    const matchCat = !catFilter || i.category === catFilter;
+    return matchSearch && matchCat;
+  });
+
+  // Low stock alert
+  const lowStockItems = [...DB.get('products', []).filter(p => parseFloat(p.stock) <= parseFloat(p.minStock || 0)),
+                         ...inventory.filter(i => parseFloat(i.quantity) <= parseFloat(i.minStock || 0))];
+  const alertBox = document.getElementById('low-stock-alert');
+  if (lowStockItems.length) {
+    alertBox.style.display = 'block';
+    document.getElementById('low-stock-list').innerHTML = lowStockItems.map(i => `
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span>${esc(i.name)} ${i.sku ? '('+esc(i.sku)+')' : ''}</span>
+        <span style="color:var(--danger);font-weight:700;">${i.stock !== undefined ? i.stock : i.quantity} / ${i.minStock || 0}</span>
+      </div>
+    `).join('');
+  } else {
+    alertBox.style.display = 'none';
+  }
+
+  const tbody = document.getElementById('inventory-body');
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="7" class="empty-state">${t('no_inventory')}</td></tr>`; return; }
+
+  tbody.innerHTML = filtered.map(i => {
+    const low = parseFloat(i.quantity) <= parseFloat(i.minStock || 0);
+    return `<tr>
+      <td><strong>${esc(i.name)}</strong></td>
+      <td>${esc(t('cat_' + i.category) || i.category)}</td>
+      <td>${low ? '<span style="color:var(--danger);font-weight:700;">' : ''}${i.quantity}${low ? '</span>' : ''} ${esc(i.unit || '')}</td>
+      <td>${esc(i.unit || '--')}</td>
+      <td>${i.minStock || 0}</td>
+      <td>${formatMoney(i.cost)}</td>
+      <td class="actions no-print">
+        <button class="btn btn-sm btn-primary" onclick="editInventory(${i.id})">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteInventory(${i.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openInventoryModal(item) {
+  if (!checkPerm('inventory')) return;
+  const isEdit = !!item;
+  const i = item || {};
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_inv_name')}</label><input type="text" id="i-name" value="${esc(i.name || '')}"></div>
+      <div class="form-group"><label>${t('lbl_inv_cat')}</label>
+        <select id="i-category">
+          <option value="filament" ${i.category==='filament'?'selected':''}>${t('cat_filament')}</option>
+          <option value="spare" ${i.category==='spare'?'selected':''}>${t('cat_spare')}</option>
+          <option value="parts" ${i.category==='parts'?'selected':''}>${t('cat_parts')}</option>
+          <option value="addons" ${i.category==='addons'?'selected':''}>${t('cat_addons')}</option>
+          <option value="other" ${i.category==='other'?'selected':''}>${t('cat_other')}</option>
+        </select>
+      </div>
+      <div class="form-group"><label>${t('lbl_inv_qty')}</label><input type="number" id="i-qty" value="${i.quantity || ''}" step="0.1"></div>
+      <div class="form-group"><label>${t('lbl_inv_unit')}</label><input type="text" id="i-unit" value="${esc(i.unit || 'kg')}" placeholder="kg, pcs, m..."></div>
+      <div class="form-group"><label>${t('lbl_inv_min')}</label><input type="number" id="i-min" value="${i.minStock || 0}"></div>
+      <div class="form-group"><label>${t('lbl_inv_cost')}</label><input type="number" id="i-cost" value="${i.cost || ''}" step="0.01"></div>
+      <div class="form-group"><label>${t('lbl_inv_supplier')}</label><input type="text" id="i-supplier" value="${esc(i.supplier || '')}"></div>
+      <div class="form-group" style="grid-column:span 2;"><label>${t('lbl_notes')}</label><textarea id="i-notes" rows="2">${esc(i.notes || '')}</textarea></div>
+    </div>
+  `;
+  openModal(t(isEdit ? 'modal_edit_inventory' : 'modal_add_inventory'), content, () => {
+    const data = {
+      id: i.id || uid(),
+      name: document.getElementById('i-name').value,
+      category: document.getElementById('i-category').value,
+      quantity: parseFloat(document.getElementById('i-qty').value) || 0,
+      unit: document.getElementById('i-unit').value,
+      minStock: parseFloat(document.getElementById('i-min').value) || 0,
+      cost: parseFloat(document.getElementById('i-cost').value) || 0,
+      supplier: document.getElementById('i-supplier').value,
+      notes: document.getElementById('i-notes').value,
+      createdAt: i.createdAt || new Date().toISOString()
+    };
+    let inv = DB.get('inventory', []);
+    if (isEdit) inv = inv.map(x => x.id === i.id ? data : x);
+    else inv.push(data);
+    DB.set('inventory', inv);
+    showToast(t('toast_saved'));
+    closeModal();
+    renderInventory();
+    renderDashboard();
+  });
+}
+
+function editInventory(id) {
+  const i = DB.get('inventory', []).find(x => x.id === id);
+  if (i) openInventoryModal(i);
+}
+function deleteInventory(id) {
+  if (!confirm(t('confirm_delete'))) return;
+  DB.set('inventory', DB.get('inventory', []).filter(x => x.id !== id));
+  showToast(t('toast_deleted'));
+  renderInventory();
+  renderDashboard();
+}
+
+// =====================
+// CUSTOMERS
+// =====================
+function renderCustomers() {
+  const customers = DB.get('customers', []);
+  const orders = DB.get('orders', []);
+  const search = document.getElementById('customer-search')?.value.toLowerCase() || '';
+
+  const filtered = customers.filter(c => !search || (c.name && c.name.toLowerCase().includes(search)) || (c.phone && c.phone.includes(search)));
+
+  const tbody = document.getElementById('customers-body');
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="7" class="empty-state">${t('no_customers')}</td></tr>`; return; }
+
+  tbody.innerHTML = filtered.map(c => {
+    const custOrders = orders.filter(o => o.customerId == c.id);
+    const totalSpent = custOrders.filter(o => o.status === 'delivered').reduce((s, o) => s + (parseFloat(o.total) || 0), 0);
+    return `<tr>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(c.phone || '--')}</td>
+      <td>${c.whatsapp ? `<a href="https://wa.me/${String(c.whatsapp).replace(/\D/g,'')}" target="_blank" rel="noopener">${esc(c.whatsapp)}</a>` : '--'}</td>
+      <td>${esc(c.address || '--')}</td>
+      <td>${custOrders.length}</td>
+      <td>${formatMoney(totalSpent)}</td>
+      <td class="actions no-print">
+        <button class="btn btn-sm btn-primary" onclick="editCustomer(${c.id})">✏️</button>
+        <button class="btn btn-sm btn-info" onclick="viewCustomerOrders(${c.id})">📂</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCustomer(${c.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openCustomerModal(customer) {
+  if (!checkPerm('customers')) return;
+  const isEdit = !!customer;
+  const c = customer || {};
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_cust_name')}</label><input type="text" id="c-name" value="${esc(c.name || '')}"></div>
+      <div class="form-group"><label>${t('lbl_cust_phone')}</label><input type="text" id="c-phone" value="${esc(c.phone || '')}"></div>
+      <div class="form-group"><label>${t('lbl_cust_whatsapp')}</label><input type="text" id="c-whatsapp" value="${esc(c.whatsapp || '')}"></div>
+      <div class="form-group"><label>${t('lbl_cust_address')}</label><input type="text" id="c-address" value="${esc(c.address || '')}"></div>
+      <div class="form-group"><label>${t('lbl_cust_fb')}</label><input type="text" id="c-fb" value="${esc(c.facebook || '')}" placeholder="facebook.com/..."></div>
+      <div class="form-group"><label>${t('lbl_cust_ig')}</label><input type="text" id="c-ig" value="${esc(c.instagram || '')}" placeholder="instagram.com/..."></div>
+      <div class="form-group" style="grid-column:span 2;"><label>${t('lbl_notes')}</label><textarea id="c-notes" rows="2">${esc(c.notes || '')}</textarea></div>
+    </div>
+  `;
+  openModal(t(isEdit ? 'modal_edit_customer' : 'modal_add_customer'), content, () => {
+    const data = {
+      id: c.id || uid(),
+      name: document.getElementById('c-name').value,
+      phone: document.getElementById('c-phone').value,
+      whatsapp: document.getElementById('c-whatsapp').value,
+      address: document.getElementById('c-address').value,
+      facebook: document.getElementById('c-fb').value,
+      instagram: document.getElementById('c-ig').value,
+      notes: document.getElementById('c-notes').value,
+      createdAt: c.createdAt || new Date().toISOString()
+    };
+    let customers = DB.get('customers', []);
+    if (isEdit) customers = customers.map(x => x.id === c.id ? data : x);
+    else customers.push(data);
+    DB.set('customers', customers);
+    showToast(t('toast_saved'));
+    closeModal();
+    renderCustomers();
+    renderDashboard();
+  });
+}
+
+function editCustomer(id) { const c = DB.get('customers', []).find(x => x.id === id); if (c) openCustomerModal(c); }
+function deleteCustomer(id) {
+  if (!confirm(t('confirm_delete'))) return;
+  DB.set('customers', DB.get('customers', []).filter(x => x.id !== id));
+  showToast(t('toast_deleted'));
+  renderCustomers();
+}
+function viewCustomerOrders(id) {
+  const orders = DB.get('orders', []).filter(o => o.customerId == id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const c = DB.get('customers', []).find(x => x.id === id);
+  let html = `<div style="max-height:400px;overflow-y:auto;"><h3 style="margin-bottom:12px;">${c ? esc(c.name) : ''}</h3>`;
+  if (!orders.length) html += `<div class="empty-state">${t('no_orders')}</div>`;
+  else html += `<table class="data-table"><thead><tr><th>${t('th_order_id')}</th><th>${t('th_status')}</th><th>${t('th_total')}</th><th>${t('th_date')}</th></tr></thead><tbody>` +
+    orders.map(o => `<tr><td>#${o.id}</td><td><span class="status-badge status-${o.status}">${t('status_' + o.status)}</span></td><td>${formatMoney(o.total)}</td><td>${formatDate(o.date)}</td></tr>`).join('') + '</tbody></table>';
+  html += '</div>';
+  openModal(currentLang === 'ar' ? 'تاريخ المشتريات' : 'Purchase History', html, null);
+  document.getElementById('modal-save-btn').style.display = 'none';
+}
+
+// =====================
+// ORDERS
+// =====================
+function renderOrders() {
+  const orders = DB.get('orders', []);
+  const customers = DB.get('customers', []);
+  const products = DB.get('products', []);
+  const search = document.getElementById('order-search')?.value.toLowerCase() || '';
+  const statusFilter = document.getElementById('order-filter-status')?.value || '';
+
+  const filtered = orders.filter(o => {
+    const cust = customers.find(c => c.id == o.customerId);
+    const matchSearch = !search || (cust && cust.name.toLowerCase().includes(search)) || ('#'+o.id).includes(search);
+    const matchStatus = !statusFilter || o.status === statusFilter;
+    return matchSearch && matchStatus;
+  }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const tbody = document.getElementById('orders-body');
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${t('no_orders')}</td></tr>`; return; }
+
+  tbody.innerHTML = filtered.map(o => {
+    const cust = customers.find(c => c.id == o.customerId);
+    const itemCount = (o.items || []).length;
+    return `<tr>
+      <td><strong>#${o.id}</strong></td>
+      <td>${cust ? esc(cust.name) : '--'}</td>
+      <td>${itemCount} ${t('saved_inv_items')}</td>
+      <td><span class="status-badge status-${o.status}">${t('status_' + o.status)}</span></td>
+      <td>${formatMoney(o.total)}</td>
+      <td>${t('payment_' + (o.paymentStatus || 'unpaid'))}</td>
+      <td>${formatDate(o.date)}</td>
+      <td class="actions no-print">
+        <button class="btn btn-sm btn-primary" onclick="editOrder(${o.id})">✏️</button>
+        <button class="btn btn-sm btn-success" onclick="createInvoiceFromOrder(${o.id})">🧾</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteOrder(${o.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openOrderModal(order) {
+  if (!checkPerm('orders')) return;
+  const isEdit = !!order;
+  const o = order || {};
+  const customers = DB.get('customers', []);
+  const products = DB.get('products', []);
+
+  let itemsHtml = '';
+  if (o.items && o.items.length) {
+    o.items.forEach((it, idx) => {
+      const prod = products.find(p => p.id == it.productId);
+      itemsHtml += renderOrderItemRow(idx, it, products);
+    });
+  } else {
+    itemsHtml = renderOrderItemRow(0, {}, products);
+  }
+
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_order_customer')}</label>
+        <select id="o-customer">
+          <option value="">--</option>
+          ${customers.map(c => `<option value="${c.id}" ${o.customerId==c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>${t('lbl_order_status')}</label>
+        <select id="o-status">
+          <option value="pending" ${o.status==='pending'?'selected':''}>${t('status_pending')}</option>
+          <option value="printing" ${o.status==='printing'?'selected':''}>${t('status_printing')}</option>
+          <option value="ready" ${o.status==='ready'?'selected':''}>${t('status_ready')}</option>
+          <option value="delivered" ${o.status==='delivered'?'selected':''}>${t('status_delivered')}</option>
+          <option value="cancelled" ${o.status==='cancelled'?'selected':''}>${t('status_cancelled')}</option>
+        </select>
+      </div>
+      <div class="form-group"><label>${t('lbl_order_date')}</label><input type="date" id="o-date" value="${o.date || new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group"><label>${t('lbl_print_start')}</label><input type="datetime-local" id="o-print-start" value="${o.printStart || ''}"></div>
+      <div class="form-group"><label>${t('lbl_print_end')}</label><input type="datetime-local" id="o-print-end" value="${o.printEnd || ''}"></div>
+      <div class="form-group"><label>${t('lbl_delivery_date')}</label><input type="date" id="o-delivery" value="${o.deliveryDate || ''}"></div>
+      <div class="form-group"><label>${t('lbl_payment_status')}</label>
+        <select id="o-payment">
+          <option value="unpaid" ${o.paymentStatus==='unpaid'?'selected':''}>${t('payment_unpaid')}</option>
+          <option value="partial" ${o.paymentStatus==='partial'?'selected':''}>${t('payment_partial')}</option>
+          <option value="paid" ${o.paymentStatus==='paid'?'selected':''}>${t('payment_paid')}</option>
+        </select>
+      </div>
+      <div class="form-group"><label>${t('lbl_order_notes')}</label><input type="text" id="o-notes" value="${esc(o.notes || '')}"></div>
+    </div>
+    <hr style="border-color:var(--border);margin:20px 0;">
+    <div style="font-weight:700;margin-bottom:12px;">${t('lbl_add_item')}</div>
+    <div id="order-items-container">${itemsHtml}</div>
+    <button class="btn btn-secondary btn-sm" onclick="addOrderItemRow()" style="margin-top:10px;">➕ ${t('btn_add_item_row')}</button>
+    <div style="text-align:left;margin-top:16px;font-size:1.2rem;font-weight:800;">
+      ${t('tf_total')}: <span id="o-total-display" style="color:var(--primary);">${formatMoney(o.total || 0)}</span>
+    </div>
+  `;
+
+  openModal(t(isEdit ? 'modal_edit_order' : 'modal_add_order'), content, () => {
+    const rows = document.querySelectorAll('.order-item-row');
+    const items = [];
+    let total = 0;
+    rows.forEach(row => {
+      const pid = row.querySelector('.oi-product').value;
+      const qty = parseInt(row.querySelector('.oi-qty').value) || 0;
+      const price = parseFloat(row.querySelector('.oi-price').value) || 0;
+      if (pid && qty > 0) {
+        items.push({ productId: pid, qty, price });
+        total += qty * price;
+      }
+    });
+
+    const data = {
+      id: o.id || uid(),
+      customerId: document.getElementById('o-customer').value,
+      status: document.getElementById('o-status').value,
+      date: document.getElementById('o-date').value,
+      printStart: document.getElementById('o-print-start').value,
+      printEnd: document.getElementById('o-print-end').value,
+      deliveryDate: document.getElementById('o-delivery').value,
+      paymentStatus: document.getElementById('o-payment').value,
+      notes: document.getElementById('o-notes').value,
+      items, total,
+      createdAt: o.createdAt || new Date().toISOString()
+    };
+
+    // Stock: give back the old items on edit, then deduct the new ones (cancelled orders hold no stock)
+    if (isEdit && !isCancelled(o)) adjustStock(o.items, +1, products);
+    if (!isCancelled(data)) adjustStock(items, -1, products);
+    DB.set('products', products);
+
+    let orders = DB.get('orders', []);
+    if (isEdit) orders = orders.map(x => x.id === o.id ? data : x);
+    else orders.push(data);
+    DB.set('orders', orders);
+
+    // Keep the income record in sync with the order
+    const income = DB.get('income', []);
+    const incIdx = income.findIndex(inc => inc.orderId === data.id);
+    if (data.status === 'delivered' && data.paymentStatus === 'paid') {
+      if (incIdx === -1) income.push({ id: uid(), orderId: data.id, date: data.date, description: `Order #${data.id}`, amount: data.total, createdAt: new Date().toISOString() });
+      else income[incIdx] = { ...income[incIdx], date: data.date, amount: data.total };
+    } else if (incIdx !== -1) income.splice(incIdx, 1);
+    DB.set('income', income);
+
+    showToast(t('toast_saved'));
+    closeModal();
+    renderOrders();
+    renderDashboard();
+    renderFinance();
+  });
+}
+
+function renderOrderItemRow(idx, item, products) {
+  const prodOpts = products.map(p => `<option value="${p.id}" ${item.productId==p.id?'selected':''}>${esc(p.name)} (${formatMoney(p.sellPrice)})</option>`).join('');
+  return `
+    <div class="form-grid order-item-row" style="margin-bottom:10px;align-items:end;">
+      <div class="form-group"><label>${t('lbl_item_product')}</label><select class="oi-product" onchange="updateOrderItemPrice(this)"><option value="">--</option>${prodOpts}</select></div>
+      <div class="form-group"><label>${t('lbl_item_qty')}</label><input type="number" class="oi-qty" value="${item.qty || 1}" min="1" onchange="calcOrderTotal()"></div>
+      <div class="form-group"><label>${t('lbl_item_price')}</label><input type="number" class="oi-price" value="${item.price || ''}" step="0.01" onchange="calcOrderTotal()"></div>
+      <div class="form-group"><button class="btn btn-danger btn-sm" onclick="this.closest('.order-item-row').remove();calcOrderTotal();">${t('btn_remove')}</button></div>
+    </div>
+  `;
+}
+
+function addOrderItemRow() {
+  const container = document.getElementById('order-items-container');
+  const products = DB.get('products', []);
+  const div = document.createElement('div');
+  div.innerHTML = renderOrderItemRow(Date.now(), {}, products);
+  container.appendChild(div.firstElementChild);
+}
+
+function updateOrderItemPrice(select) {
+  const products = DB.get('products', []);
+  const pid = select.value;
+  const prod = products.find(p => p.id == pid);
+  const row = select.closest('.order-item-row');
+  if (prod) row.querySelector('.oi-price').value = prod.sellPrice || 0;
+  calcOrderTotal();
+}
+
+function calcOrderTotal() {
+  const rows = document.querySelectorAll('.order-item-row');
+  let total = 0;
+  rows.forEach(row => {
+    const qty = parseInt(row.querySelector('.oi-qty').value) || 0;
+    const price = parseFloat(row.querySelector('.oi-price').value) || 0;
+    total += qty * price;
+  });
+  const disp = document.getElementById('o-total-display');
+  if (disp) disp.textContent = formatMoney(total);
+}
+
+function editOrder(id) { const o = DB.get('orders', []).find(x => x.id === id); if (o) openOrderModal(o); }
+function deleteOrder(id) {
+  if (!confirm(t('confirm_delete'))) return;
+  const oldOrder = DB.get('orders', []).find(x => x.id === id);
+  if (oldOrder && !isCancelled(oldOrder)) { const prods = DB.get('products', []); adjustStock(oldOrder.items, +1, prods); DB.set('products', prods); }
+  DB.set('orders', DB.get('orders', []).filter(x => x.id !== id));
+  // Remove associated income
+  DB.set('income', DB.get('income', []).filter(x => x.orderId !== id));
+  showToast(t('toast_deleted'));
+  renderOrders();
+  renderDashboard();
+  renderFinance();
+}
+function createInvoiceFromOrder(id) {
+  const o = DB.get('orders', []).find(x => x.id === id);
+  if (!o) return;
+  const customers = DB.get('customers', []);
+  const products = DB.get('products', []);
+  const cust = customers.find(c => c.id == o.customerId);
+
+  document.getElementById('invoice-items').innerHTML = '';
+  (o.items || []).forEach(it => {
+    const prod = products.find(p => p.id == it.productId);
+    addInvoiceItemRow(prod ? prod.name : 'Item', it.qty, it.price);
+  });
+  document.getElementById('inv-customer').value = cust ? cust.name : '';
+  document.getElementById('inv-date').value = o.date || new Date().toISOString().split('T')[0];
+  document.getElementById('inv-notes').value = o.notes || '';
+  showSection('invoices');
+  updateInvoicePreview();
+}
+
+// =====================
+// FINANCE
+// =====================
+let financeTab = 'income';
+function setFinanceTab(tab) {
+  financeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('finance-income').style.display = tab === 'income' ? 'block' : 'none';
+  document.getElementById('finance-expense').style.display = tab === 'expense' ? 'block' : 'none';
+  document.getElementById('finance-summary').style.display = tab === 'summary' ? 'block' : 'none';
+  renderFinance();
+}
+
+function renderFinance() {
+  const income = DB.get('income', []);
+  const expenses = DB.get('expenses', []);
+  const searchInc = document.getElementById('income-search')?.value.toLowerCase() || '';
+  const searchExp = document.getElementById('expense-search')?.value.toLowerCase() || '';
+
+  // Income
+  const filteredInc = income.filter(i => !searchInc || (i.description && i.description.toLowerCase().includes(searchInc))).sort((a,b) => new Date(b.date) - new Date(a.date));
+  document.getElementById('income-body').innerHTML = filteredInc.length ? filteredInc.map(i => `
+    <tr><td>${formatDate(i.date)}</td><td>${esc(i.description)}</td><td>${formatMoney(i.amount)}</td>
+    <td class="actions no-print"><button class="btn btn-sm btn-danger" onclick="deleteIncome(${i.id})">🗑️</button></td></tr>
+  `).join('') : `<tr><td colspan="4" class="empty-state">${t('no_data')}</td></tr>`;
+
+  // Expenses
+  const filteredExp = expenses.filter(e => !searchExp || (e.description && e.description.toLowerCase().includes(searchExp)) || (e.category && e.category.toLowerCase().includes(searchExp))).sort((a,b) => new Date(b.date) - new Date(a.date));
+  document.getElementById('expense-body').innerHTML = filteredExp.length ? filteredExp.map(e => `
+    <tr><td>${formatDate(e.date)}</td><td>${esc(e.category || '--')}</td><td>${esc(e.description)}</td><td>${formatMoney(e.amount)}</td>
+    <td class="actions no-print"><button class="btn btn-sm btn-danger" onclick="deleteExpense(${e.id})">🗑️</button></td></tr>
+  `).join('') : `<tr><td colspan="5" class="empty-state">${t('no_data')}</td></tr>`;
+
+  // Summary KPIs
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const monthIncome = income.filter(i => i.date && i.date.startsWith(thisMonth)).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const monthExpenses = expenses.filter(e => e.date && e.date.startsWith(thisMonth)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const profit = monthIncome - monthExpenses;
+
+  document.getElementById('finance-kpis').innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">${t('tab_income')}</div><div class="kpi-value" style="color:var(--success);">${formatMoney(monthIncome)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">${t('tab_expense')}</div><div class="kpi-value" style="color:var(--danger);">${formatMoney(monthExpenses)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">${t('th_profit')}</div><div class="kpi-value" style="color:${profit>=0?'var(--success)':'var(--danger)'}">${formatMoney(profit)}</div></div>
+  `;
+
+  // Charts
+  renderFinanceCharts();
+}
+
+function renderFinanceCharts() {
+  const income = DB.get('income', []);
+  const expenses = DB.get('expenses', []);
+
+  // Profit chart
+  const months = []; const profitData = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const m = d.toISOString().slice(0, 7);
+    months.push(d.toLocaleDateString(currentLang === 'ar' ? 'ar-SY' : 'en-US', {month:'short'}));
+    const inc = income.filter(x => x.date && x.date.startsWith(m)).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+    const exp = expenses.filter(x => x.date && x.date.startsWith(m)).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+    profitData.push(inc - exp);
+  }
+  if (charts.profit) charts.profit.destroy();
+  charts.profit = new Chart(document.getElementById('chart-profit'), {
+    type: 'bar', data: { labels: months, datasets: [{ label: t('chart_profit'), data: profitData, backgroundColor: profitData.map(v => v >= 0 ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'), borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } }
+  });
+
+  // Expense categories
+  const cats = {};
+  expenses.forEach(e => { cats[e.category || 'Other'] = (cats[e.category || 'Other'] || 0) + (parseFloat(e.amount) || 0); });
+  if (charts.expenseCat) charts.expenseCat.destroy();
+  charts.expenseCat = new Chart(document.getElementById('chart-expense-cat'), {
+    type: 'doughnut', data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ['#6366f1','#ec4899','#06b6d4','#22c55e','#f59e0b','#ef4444'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } } }
+  });
+}
+
+function openFinanceModal(type) {
+  if (!checkPerm('finance')) return;
+  const isIncome = type === 'income';
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_finance_date')}</label><input type="date" id="f-date" value="${new Date().toISOString().split('T')[0]}"></div>
+      ${!isIncome ? `<div class="form-group"><label>${t('lbl_finance_cat')}</label>
+        <select id="f-category">
+          <option value="filament">${t('cat_filament')}</option>
+          <option value="spare">${t('cat_spare')}</option>
+          <option value="electricity">${currentLang==='ar'?'كهرباء':'Electricity'}</option>
+          <option value="maintenance">${currentLang==='ar'?'صيانة':'Maintenance'}</option>
+          <option value="rent">${currentLang==='ar'?'إيجار':'Rent'}</option>
+          <option value="other">${t('cat_other')}</option>
+        </select>
+      </div>` : ''}
+      <div class="form-group" style="grid-column:span 2;"><label>${t('lbl_finance_desc')}</label><input type="text" id="f-desc" placeholder="${t('lbl_finance_desc')}"></div>
+      <div class="form-group"><label>${t('lbl_finance_amount')}</label><input type="number" id="f-amount" step="0.01"></div>
+    </div>
+  `;
+  openModal(t(isIncome ? 'modal_add_income' : 'modal_add_expense'), content, () => {
+    const data = {
+      id: uid(),
+      date: document.getElementById('f-date').value,
+      description: document.getElementById('f-desc').value,
+      amount: parseFloat(document.getElementById('f-amount').value) || 0,
+      createdAt: new Date().toISOString()
+    };
+    if (!isIncome) data.category = document.getElementById('f-category').value;
+    if (isIncome) {
+      const arr = DB.get('income', []); arr.push(data); DB.set('income', arr);
+    } else {
+      const arr = DB.get('expenses', []); arr.push(data); DB.set('expenses', arr);
+    }
+    showToast(t('toast_saved'));
+    closeModal();
+    renderFinance();
+    renderDashboard();
+  });
+}
+
+function deleteIncome(id) { if (!confirm(t('confirm_delete'))) return; DB.set('income', DB.get('income', []).filter(x => x.id !== id)); showToast(t('toast_deleted')); renderFinance(); renderDashboard(); }
+function deleteExpense(id) { if (!confirm(t('confirm_delete'))) return; DB.set('expenses', DB.get('expenses', []).filter(x => x.id !== id)); showToast(t('toast_deleted')); renderFinance(); renderDashboard(); }
+
+// =====================
+// REPORTS
+// =====================
+function renderReports() {
+  const period = document.getElementById('report-period')?.value || 'monthly';
+  const dateVal = document.getElementById('report-date')?.value;
+  const orders = DB.get('orders', []);
+  const expenses = DB.get('expenses', []);
+  const income = DB.get('income', []);
+
+  let startDate, endDate, labelFormat;
+  const now = new Date();
+  if (dateVal) {
+    const d = new Date(dateVal);
+    if (period === 'daily') { startDate = new Date(d); endDate = new Date(d); endDate.setDate(endDate.getDate() + 1); }
+    else if (period === 'weekly') { startDate = new Date(d); startDate.setDate(startDate.getDate() - startDate.getDay()); endDate = new Date(startDate); endDate.setDate(endDate.getDate() + 7); }
+    else if (period === 'monthly') { startDate = new Date(d.getFullYear(), d.getMonth(), 1); endDate = new Date(d.getFullYear(), d.getMonth() + 1, 1); }
+    else if (period === 'yearly') { startDate = new Date(d.getFullYear(), 0, 1); endDate = new Date(d.getFullYear() + 1, 0, 1); }
+  } else {
+    if (period === 'daily') { startDate = new Date(now); startDate.setHours(0,0,0,0); endDate = new Date(startDate); endDate.setDate(endDate.getDate() + 1); }
+    else if (period === 'weekly') { startDate = new Date(now); startDate.setDate(startDate.getDate() - startDate.getDay()); endDate = new Date(startDate); endDate.setDate(endDate.getDate() + 7); }
+    else if (period === 'monthly') { startDate = new Date(now.getFullYear(), now.getMonth(), 1); endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1); }
+    else if (period === 'yearly') { startDate = new Date(now.getFullYear(), 0, 1); endDate = new Date(now.getFullYear() + 1, 0, 1); }
+  }
+
+  const filteredOrders = orders.filter(o => {
+    const d = new Date(o.date || o.createdAt);
+    return d >= startDate && d < endDate && o.status === 'delivered';
+  });
+  const filteredExpenses = expenses.filter(e => { const d = new Date(e.date || e.createdAt); return d >= startDate && d < endDate; });
+
+  const totalSales = filteredOrders.reduce((s, o) => s + (parseFloat(o.total) || 0), 0);
+  const totalExpenses = filteredExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const profit = totalSales - totalExpenses;
+
+  document.getElementById('report-kpis').innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">${t('th_orders')}</div><div class="kpi-value">${filteredOrders.length}</div></div>
+    <div class="kpi-card"><div class="kpi-label">${t('th_sales')}</div><div class="kpi-value" style="color:var(--success);">${formatMoney(totalSales)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">${t('th_expenses')}</div><div class="kpi-value" style="color:var(--danger);">${formatMoney(totalExpenses)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">${t('th_profit')}</div><div class="kpi-value" style="color:${profit>=0?'var(--success)':'var(--danger)'}">${formatMoney(profit)}</div></div>
+  `;
+
+  // Daily breakdown for the period
+  const days = {};
+  const cur = new Date(startDate);
+  while (cur < endDate) {
+    const key = cur.toISOString().split('T')[0];
+    days[key] = { sales: 0, expenses: 0, orders: 0 };
+    cur.setDate(cur.getDate() + 1);
+  }
+  filteredOrders.forEach(o => { const d = o.date; if (days[d]) { days[d].sales += parseFloat(o.total) || 0; days[d].orders += 1; } });
+  filteredExpenses.forEach(e => { const d = e.date; if (days[d]) days[d].expenses += parseFloat(e.amount) || 0; });
+
+  const tbody = document.getElementById('report-body');
+  tbody.innerHTML = Object.entries(days).map(([date, data]) => `
+    <tr><td>${formatDate(date)}</td><td>${data.orders}</td><td>${formatMoney(data.sales)}</td><td>${formatMoney(data.expenses)}</td><td>${formatMoney(data.sales - data.expenses)}</td></tr>
+  `).join('');
+}
+
+function exportReportXLSX() {
+  const period = document.getElementById('report-period')?.value || 'monthly';
+  const wb = XLSX.utils.book_new();
+  const orders = DB.get('orders', []);
+  const expenses = DB.get('expenses', []);
+  const customers = DB.get('customers', []);
+  const products = DB.get('products', []);
+
+  // Sheet 1: Orders
+  const orderRows = orders.map(o => {
+    const c = customers.find(x => x.id == o.customerId);
+    return { ID: o.id, Customer: c ? c.name : '', Date: o.date, Status: o.status, Total: o.total, Payment: o.paymentStatus, Notes: o.notes };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(orderRows), 'Orders');
+
+  // Sheet 2: Expenses
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenses), 'Expenses');
+
+  // Sheet 3: Products
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(products), 'Products');
+
+  // Sheet 4: Inventory
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('inventory', [])), 'Inventory');
+
+  XLSX.writeFile(wb, `3Dzone_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('✅ Excel exported');
+}
+
+// =====================
+// INVOICES
+// =====================
+function renderInvoices() {
+  const invoices = DB.get('invoices', []);
+  const customers = DB.get('customers', []);
+  const search = document.getElementById('invoice-search')?.value.toLowerCase() || '';
+
+  const filtered = invoices.filter(inv => {
+    const matchSearch = !search || (inv.number && inv.number.toLowerCase().includes(search)) || (inv.customerName && inv.customerName.toLowerCase().includes(search));
+    return matchSearch;
+  }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const tbody = document.getElementById('invoices-body');
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">${t('no_invoices')}</td></tr>`; return; }
+
+  tbody.innerHTML = filtered.map(inv => `
+    <tr>
+      <td><strong>${esc(inv.number)}</strong></td>
+      <td>${esc(inv.customerName || '--')}</td>
+      <td>${formatMoney(inv.total)}</td>
+      <td>${formatDate(inv.date)}</td>
+      <td class="actions no-print">
+        <button class="btn btn-sm btn-primary" onclick="viewInvoice(${inv.id})">👁️</button>
+        <button class="btn btn-sm btn-success" onclick="exportInvoicePDF(${inv.id})">📄</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteInvoice(${inv.id})">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+let invoiceItems = [];
+function openInvoiceModal() {
+  if (!checkPerm('invoices')) return;
+  invoiceItems = [{desc:'', qty:1, price:0}];
+  renderInvoiceForm();
+}
+
+function renderInvoiceForm() {
+  const customers = DB.get('customers', []);
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_inv_number')}</label><input type="text" id="inv-number" value="${nextInvoiceNumber()}"></div>
+      <div class="form-group"><label>${t('lbl_inv_customer')}</label>
+        <select id="inv-customer" onchange="document.getElementById('inv-cust-name').value=this.options[this.selectedIndex].text">
+          <option value="">--</option>
+          ${customers.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+        </select>
+        <input type="hidden" id="inv-cust-name">
+      </div>
+      <div class="form-group"><label>${t('lbl_inv_date')}</label><input type="date" id="inv-date" value="${new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group"><label>${t('lbl_inv_discount')}</label><input type="number" id="inv-discount" value="0" min="0" max="100" onchange="updateInvoicePreview()"></div>
+      <div class="form-group"><label>${t('lbl_inv_tax')}</label><input type="number" id="inv-tax" value="0" min="0" max="100" onchange="updateInvoicePreview()"></div>
+      <div class="form-group" style="grid-column:span 2;"><label>${t('lbl_inv_notes')}</label><input type="text" id="inv-notes"></div>
+    </div>
+    <hr style="border-color:var(--border);margin:20px 0;">
+    <div style="font-weight:700;margin-bottom:12px;">${t('inv_items')}</div>
+    <div id="invoice-items">${invoiceItems.map((it, i) => renderInvoiceItemRow(i, it)).join('')}</div>
+    <button class="btn btn-secondary btn-sm" onclick="addInvoiceItem()" style="margin-top:10px;">➕ ${t('btn_add_item_row')}</button>
+    <div id="invoice-preview-area" style="margin-top:20px;"></div>
+  `;
+  openModal(t('modal_create_invoice'), content, () => {
+    saveInvoice();
+  });
+  setTimeout(updateInvoicePreview, 100);
+}
+
+function renderInvoiceItemRow(idx, item) {
+  return `
+    <div class="form-grid" style="margin-bottom:10px;align-items:end;">
+      <div class="form-group"><input type="text" class="inv-item-desc" value="${esc(item.desc || '')}" placeholder="${t('th_desc')}" onchange="updateInvoicePreview()"></div>
+      <div class="form-group"><input type="number" class="inv-item-qty" value="${item.qty || 1}" min="1" onchange="updateInvoicePreview()"></div>
+      <div class="form-group"><input type="number" class="inv-item-price" value="${item.price || ''}" step="0.01" onchange="updateInvoicePreview()"></div>
+      <div class="form-group"><button class="btn btn-danger btn-sm" onclick="removeInvoiceItem(${idx})">${t('btn_remove')}</button></div>
+    </div>
+  `;
+}
+
+function addInvoiceItem() { invoiceItems.push({desc:'', qty:1, price:0}); refreshInvoiceItems(); }
+function addInvoiceItemRow(desc, qty, price) { invoiceItems.push({desc, qty, price}); refreshInvoiceItems(); }
+function removeInvoiceItem(idx) { if (invoiceItems.length <= 1) return; invoiceItems.splice(idx, 1); refreshInvoiceItems(); }
+function refreshInvoiceItems() {
+  const container = document.getElementById('invoice-items');
+  if (container) container.innerHTML = invoiceItems.map((it, i) => renderInvoiceItemRow(i, it)).join('');
+  updateInvoicePreview();
+}
+
+function updateInvoicePreview() {
+  const rows = document.querySelectorAll('#invoice-items .form-grid');
+  invoiceItems = [];
+  let subtotal = 0;
+  rows.forEach(row => {
+    const desc = row.querySelector('.inv-item-desc')?.value || '';
+    const qty = parseInt(row.querySelector('.inv-item-qty')?.value) || 0;
+    const price = parseFloat(row.querySelector('.inv-item-price')?.value) || 0;
+    invoiceItems.push({desc, qty, price});
+    subtotal += qty * price;
+  });
+
+  const discountRate = parseFloat(document.getElementById('inv-discount')?.value) || 0;
+  const taxRate = parseFloat(document.getElementById('inv-tax')?.value) || 0;
+  const discount = subtotal * (discountRate / 100);
+  const afterDiscount = subtotal - discount;
+  const tax = afterDiscount * (taxRate / 100);
+  const total = afterDiscount + tax;
+
+  const settings = DB.get('settings', {});
+  const customerName = document.getElementById('inv-customer')?.options[document.getElementById('inv-customer')?.selectedIndex]?.text || '';
+  const date = document.getElementById('inv-date')?.value || new Date().toISOString().split('T')[0];
+
+  const area = document.getElementById('invoice-preview-area');
+  if (!area) return;
+
+  area.innerHTML = `
+    <div class="invoice-preview-box" id="invoice-preview-el">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:3px solid var(--primary);">
+        <div>
+          <div style="font-size:1.8rem;font-weight:800;color:var(--primary-dark);">${esc(settings.companyName || '3Dzone')}</div>
+          <div style="color:#64748b;margin-top:4px;">${esc(settings.companyAddress || '')}</div>
+          <div style="color:#64748b;">${esc(settings.companyPhone || '')}</div>
+          <div style="color:#64748b;">${esc(settings.companyEmail || '')}</div>
+        </div>
+        <div style="text-align:left;">
+          <div style="font-size:1.3rem;font-weight:800;color:#1e293b;">${t('inv_title')}</div>
+          <div style="color:#64748b;">${t('preview_no')} ${document.getElementById('inv-number')?.value || 'INV-001'}</div>
+          <div style="color:#64748b;">${t('preview_date')} ${formatDate(date)}</div>
+        </div>
+      </div>
+      <div style="margin-bottom:20px;">
+        <div style="font-weight:700;color:#475569;margin-bottom:4px;">${t('inv_bill_to')}</div>
+        <div style="font-size:1.1rem;font-weight:600;">${esc(customerName || '--')}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <thead><tr style="background:#f8fafc;">
+          <th style="padding:12px;text-align:right;border-bottom:1px solid #e2e8f0;">${t('th_desc')}</th>
+          <th style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${t('th_qty')}</th>
+          <th style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${t('th_unit_price')}</th>
+          <th style="padding:12px;text-align:left;border-bottom:1px solid #e2e8f0;">${t('th_total')}</th>
+        </tr></thead>
+        <tbody>
+          ${invoiceItems.map(it => `<tr><td style="padding:12px;border-bottom:1px solid #e2e8f0;">${esc(it.desc || '--')}</td><td style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${it.qty}</td><td style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${formatMoney(it.price)}</td><td style="padding:12px;text-align:left;border-bottom:1px solid #e2e8f0;font-weight:600;">${formatMoney(it.qty * it.price)}</td></tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr><td colspan="3" style="padding:12px;text-align:left;font-weight:700;">${t('tf_subtotal')}</td><td style="padding:12px;text-align:left;font-weight:700;">${formatMoney(subtotal)}</td></tr>
+          ${discountRate > 0 ? `<tr><td colspan="3" style="padding:12px;text-align:left;font-weight:700;color:#ef4444;">${t('tf_discount')}</td><td style="padding:12px;text-align:left;color:#ef4444;font-weight:700;">-${formatMoney(discount)}</td></tr>` : ''}
+          ${taxRate > 0 ? `<tr><td colspan="3" style="padding:12px;text-align:left;font-weight:700;">${t('tf_tax')}</td><td style="padding:12px;text-align:left;font-weight:700;">${formatMoney(tax)}</td></tr>` : ''}
+          <tr style="background:#f8fafc;"><td colspan="3" style="padding:12px;text-align:left;font-weight:800;font-size:1.1rem;">${t('tf_total')}</td><td style="padding:12px;text-align:left;font-weight:800;font-size:1.2rem;color:var(--primary-dark);">${formatMoney(total)}</td></tr>
+        </tfoot>
+      </table>
+      <div style="margin-top:30px;padding-top:20px;border-top:2px dashed #cbd5e1;color:#64748b;font-size:0.9rem;text-align:center;">
+        <div>${document.getElementById('inv-notes')?.value || ''}</div>
+        <div style="margin-top:12px;font-size:0.8rem;color:#94a3b8;">${t('inv_footer')}</div>
+      </div>
+    </div>
+  `;
+}
+
+function saveInvoice() {
+  const number = document.getElementById('inv-number').value;
+  const customerId = document.getElementById('inv-customer').value;
+  const customerName = document.getElementById('inv-cust-name').value;
+  const date = document.getElementById('inv-date').value;
+  const discount = parseFloat(document.getElementById('inv-discount').value) || 0;
+  const tax = parseFloat(document.getElementById('inv-tax').value) || 0;
+  const notes = document.getElementById('inv-notes').value;
+
+  let subtotal = 0;
+  invoiceItems.forEach(it => { subtotal += (it.qty || 0) * (it.price || 0); });
+  const discountAmt = subtotal * (discount / 100);
+  const afterDiscount = subtotal - discountAmt;
+  const taxAmt = afterDiscount * (tax / 100);
+  const total = afterDiscount + taxAmt;
+
+  const inv = {
+    id: uid(), number, customerId, customerName, date, discount, tax, notes,
+    items: invoiceItems, subtotal, total,
+    createdAt: new Date().toISOString()
+  };
+  const invoices = DB.get('invoices', []);
+  invoices.push(inv);
+  DB.set('invoices', invoices);
+  showToast(t('toast_saved'));
+  closeModal();
+  renderInvoices();
+}
+
+function viewInvoice(id) {
+  const inv = DB.get('invoices', []).find(x => x.id === id);
+  if (!inv) return;
+  invoiceItems = inv.items || [];
+  document.getElementById('inv-number') && (document.getElementById('inv-number').value = inv.number);
+  document.getElementById('inv-customer') && (document.getElementById('inv-customer').value = inv.customerId || '');
+  document.getElementById('inv-date') && (document.getElementById('inv-date').value = inv.date);
+  document.getElementById('inv-discount') && (document.getElementById('inv-discount').value = inv.discount || 0);
+  document.getElementById('inv-tax') && (document.getElementById('inv-tax').value = inv.tax || 0);
+  document.getElementById('inv-notes') && (document.getElementById('inv-notes').value = inv.notes || '');
+  renderInvoiceForm();
+  document.getElementById('modal-save-btn').style.display = 'none';
+}
+
+async function exportInvoicePDF(id) {
+  const inv = DB.get('invoices', []).find(x => x.id === id);
+  if (!inv) return;
+  // Rebuild preview
+  invoiceItems = inv.items || [];
+  const settings = DB.get('settings', {});
+  const customerName = inv.customerName || '--';
+
+  let subtotal = 0;
+  inv.items.forEach(it => { subtotal += (it.qty || 0) * (it.price || 0); });
+  const discount = subtotal * ((inv.discount || 0) / 100);
+  const afterDiscount = subtotal - discount;
+  const tax = afterDiscount * ((inv.tax || 0) / 100);
+  const total = afterDiscount + tax;
+
+  const preview = document.createElement('div');
+  preview.className = 'invoice-preview-box';
+  preview.style.position = 'fixed';
+  preview.style.left = '-9999px';
+  preview.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:3px solid #6366f1;">
+      <div><div style="font-size:1.8rem;font-weight:800;color:#4f46e5;">${esc(settings.companyName || '3Dzone')}</div>
+      <div style="color:#64748b;margin-top:4px;">${esc(settings.companyAddress || '')}</div>
+      <div style="color:#64748b;">${esc(settings.companyPhone || '')}</div>
+      <div style="color:#64748b;">${esc(settings.companyEmail || '')}</div></div>
+      <div style="text-align:left;"><div style="font-size:1.3rem;font-weight:800;color:#1e293b;">${t('inv_title')}</div>
+      <div style="color:#64748b;">${t('preview_no')} ${esc(inv.number)}</div>
+      <div style="color:#64748b;">${t('preview_date')} ${formatDate(inv.date)}</div></div>
+    </div>
+    <div style="margin-bottom:20px;"><div style="font-weight:700;color:#475569;margin-bottom:4px;">${t('inv_bill_to')}</div>
+    <div style="font-size:1.1rem;font-weight:600;">${esc(customerName)}</div></div>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      <thead><tr style="background:#f8fafc;">
+        <th style="padding:12px;text-align:right;border-bottom:1px solid #e2e8f0;">${t('th_desc')}</th>
+        <th style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${t('th_qty')}</th>
+        <th style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${t('th_unit_price')}</th>
+        <th style="padding:12px;text-align:left;border-bottom:1px solid #e2e8f0;">${t('th_total')}</th>
+      </tr></thead>
+      <tbody>${inv.items.map(it => `<tr><td style="padding:12px;border-bottom:1px solid #e2e8f0;">${esc(it.desc || '--')}</td><td style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${it.qty}</td><td style="padding:12px;text-align:center;border-bottom:1px solid #e2e8f0;">${formatMoney(it.price)}</td><td style="padding:12px;text-align:left;border-bottom:1px solid #e2e8f0;font-weight:600;">${formatMoney(it.qty * it.price)}</td></tr>`).join('')}</tbody>
+      <tfoot>
+        <tr><td colspan="3" style="padding:12px;text-align:left;font-weight:700;">${t('tf_subtotal')}</td><td style="padding:12px;text-align:left;font-weight:700;">${formatMoney(subtotal)}</td></tr>
+        ${inv.discount > 0 ? `<tr><td colspan="3" style="padding:12px;text-align:left;font-weight:700;color:#ef4444;">${t('tf_discount')}</td><td style="padding:12px;text-align:left;color:#ef4444;font-weight:700;">-${formatMoney(discount)}</td></tr>` : ''}
+        ${inv.tax > 0 ? `<tr><td colspan="3" style="padding:12px;text-align:left;font-weight:700;">${t('tf_tax')}</td><td style="padding:12px;text-align:left;font-weight:700;">${formatMoney(tax)}</td></tr>` : ''}
+        <tr style="background:#f8fafc;"><td colspan="3" style="padding:12px;text-align:left;font-weight:800;font-size:1.1rem;">${t('tf_total')}</td><td style="padding:12px;text-align:left;font-weight:800;font-size:1.2rem;color:#4f46e5;">${formatMoney(total)}</td></tr>
+      </tfoot>
+    </table>
+    <div style="margin-top:30px;padding-top:20px;border-top:2px dashed #cbd5e1;color:#64748b;font-size:0.9rem;text-align:center;">
+      <div>${esc(inv.notes || '')}</div><div style="margin-top:12px;font-size:0.8rem;color:#94a3b8;">${t('inv_footer')}</div>
+    </div>
+  `;
+  document.body.appendChild(preview);
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const canvas = await html2canvas(preview, { scale: 2, backgroundColor: '#ffffff' });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`invoice-${esc(inv.number)}.pdf`);
+    showToast(t('toast_pdf_done'));
+  } catch (e) {
+    showToast(t('toast_pdf_fail'), 'error');
+  }
+  document.body.removeChild(preview);
+}
+
+function deleteInvoice(id) { if (!confirm(t('confirm_delete'))) return; DB.set('invoices', DB.get('invoices', []).filter(x => x.id !== id)); showToast(t('toast_deleted')); renderInvoices(); }
+
+// =====================
+// USERS
+// =====================
+function renderUsers() {
+  const users = DB.get('users', []);
+  const tbody = document.getElementById('users-body');
+  if (!users.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state">${t('no_users')}</td></tr>`; return; }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td><strong>${esc(u.name)}</strong></td>
+      <td>${esc(u.username)}</td>
+      <td>${t('role_' + u.role)}</td>
+      <td class="actions no-print">
+        ${u.id !== 1 ? `<button class="btn btn-sm btn-primary" onclick="editUser(${u.id})">✏️</button>` : ''}
+        ${u.id !== 1 ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">🗑️</button>` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openUserModal(user) {
+  if (!checkPerm('users')) return;
+  const isEdit = !!user;
+  const u = user || {};
+  const allPerms = ['products','inventory','customers','orders','finance','reports','invoices','users','settings'];
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_user_name')}</label><input type="text" id="u-name" value="${esc(u.name || '')}"></div>
+      <div class="form-group"><label>${t('lbl_user_username')}</label><input type="text" id="u-username" value="${esc(u.username || '')}" ${isEdit ? 'disabled' : ''}></div>
+      <div class="form-group"><label>${t('lbl_user_password')}</label><input type="password" id="u-password" placeholder="${isEdit ? '(اتركه فارغاً للبقاء كما هو)' : ''}"></div>
+      <div class="form-group"><label>${t('lbl_user_role')}</label>
+        <select id="u-role" onchange="togglePermCheckboxes()">
+          <option value="admin" ${u.role==='admin'?'selected':''}>${t('role_admin')}</option>
+          <option value="staff" ${u.role==='staff'?'selected':''}>${t('role_staff')}</option>
+        </select>
+      </div>
+    </div>
+    <div id="perm-section" style="margin-top:16px;${u.role==='admin'?'display:none;':''}">
+      <div style="font-weight:700;margin-bottom:10px;">${t('lbl_permissions')}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+        ${allPerms.map(p => `
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" class="u-perm" value="${p}" ${u.permissions && u.permissions.includes(p) ? 'checked' : ''}>
+            <span>${t('perm_' + p)}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  openModal(t(isEdit ? 'modal_edit_user' : 'modal_add_user'), content, async () => {
+    const role = document.getElementById('u-role').value;
+    const perms = role === 'admin' ? ['all'] : Array.from(document.querySelectorAll('.u-perm:checked')).map(cb => cb.value);
+    const data = {
+      id: u.id || uid(),
+      name: document.getElementById('u-name').value,
+      username: document.getElementById('u-username').value,
+      role, permissions: perms,
+      createdAt: u.createdAt || new Date().toISOString()
+    };
+    const newPass = document.getElementById('u-password').value;
+    if (newPass && newPass.length < 6) { showToast(L('كلمة المرور 6 أحرف على الأقل', 'Password must be at least 6 characters'), 'error'); return; }
+    if (newPass) { data.salt = newSalt(); data.passHash = await hashPassword(newPass, data.salt); }
+    let users = DB.get('users', []);
+    if (isEdit) {
+      users = users.map(x => {
+        if (x.id === u.id) {
+          const updated = { ...x, ...data };
+          if (!newPass) { updated.salt = x.salt; updated.passHash = x.passHash; }
+          return updated;
+        }
+        return x;
+      });
+    } else {
+      if (users.find(x => x.username === data.username)) { showToast('Username exists', 'error'); return; }
+      if (!newPass) { showToast(L('كلمة المرور مطلوبة', 'Password required'), 'error'); return; }
+      users.push(data);
+    }
+    DB.set('users', users);
+    showToast(t('toast_saved'));
+    closeModal();
+    renderUsers();
+  });
+}
+
+function togglePermCheckboxes() {
+  const role = document.getElementById('u-role').value;
+  const section = document.getElementById('perm-section');
+  if (section) section.style.display = role === 'admin' ? 'none' : 'block';
+}
+
+function editUser(id) { const u = DB.get('users', []).find(x => x.id === id); if (u) openUserModal(u); }
+function deleteUser(id) { if (!confirm(t('confirm_delete'))) return; DB.set('users', DB.get('users', []).filter(x => x.id !== id)); showToast(t('toast_deleted')); renderUsers(); }
+
+function showLoginModal() {
+  const content = `
+    <div class="form-grid" style="max-width:300px;margin:0 auto;">
+      <div class="form-group"><label>Username</label><input type="text" id="login-user"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="login-pass"></div>
+    </div>
+  `;
+  openModal(currentLang === 'ar' ? 'تسجيل الدخول' : 'Login', content, async () => {
+    const ok = await login(document.getElementById('login-user').value, document.getElementById('login-pass').value);
+    if (ok) { closeModal(); if (currentUser.mustChange) openChangePasswordModal(); }
+    else showToast(L('بيانات الدخول غير صحيحة', 'Invalid credentials'), 'error');
+  });
+}
+
+// =====================
+// REMINDERS
+// =====================
+function renderReminders() {
+  const reminders = DB.get('reminders', []);
+  const tbody = document.getElementById('reminders-body');
+  if (!reminders.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">${t('no_reminders')}</td></tr>`; return; }
+  tbody.innerHTML = reminders.sort((a,b) => new Date(a.date) - new Date(b.date)).map(r => {
+    const isPast = new Date(r.date) < new Date() && !r.done;
+    return `<tr style="${isPast ? 'background:rgba(239,68,68,0.05);' : ''}">
+      <td><strong>${esc(r.title)}</strong></td>
+      <td>${formatDate(r.date)}</td>
+      <td>${t('reminder_type_' + r.type)}</td>
+      <td><span class="status-badge ${r.done ? 'status-delivered' : 'status-pending'}">${r.done ? t('done') : t('active')}</span></td>
+      <td class="actions no-print">
+        ${!r.done ? `<button class="btn btn-sm btn-success" onclick="toggleReminder(${r.id})">✓</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="deleteReminder(${r.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openReminderModal() {
+  const content = `
+    <div class="form-grid">
+      <div class="form-group"><label>${t('lbl_reminder_title')}</label><input type="text" id="r-title"></div>
+      <div class="form-group"><label>${t('lbl_reminder_date')}</label><input type="datetime-local" id="r-date"></div>
+      <div class="form-group"><label>${t('lbl_reminder_type')}</label>
+        <select id="r-type">
+          <option value="order">${t('reminder_type_order')}</option>
+          <option value="maintenance">${t('reminder_type_maintenance')}</option>
+          <option value="other">${t('reminder_type_other')}</option>
+        </select>
+      </div>
+    </div>
+  `;
+  openModal(t('modal_add_reminder'), content, () => {
+    const data = {
+      id: uid(),
+      title: document.getElementById('r-title').value,
+      date: document.getElementById('r-date').value,
+      type: document.getElementById('r-type').value,
+      done: false,
+      createdAt: new Date().toISOString()
+    };
+    const arr = DB.get('reminders', []); arr.push(data); DB.set('reminders', arr);
+    showToast(t('toast_saved')); closeModal(); renderReminders();
+  });
+}
+
+function toggleReminder(id) {
+  const arr = DB.get('reminders', []).map(r => r.id === id ? { ...r, done: true } : r);
+  DB.set('reminders', arr);
+  showToast(t('toast_saved'));
+  renderReminders();
+}
+function deleteReminder(id) { if (!confirm(t('confirm_delete'))) return; DB.set('reminders', DB.get('reminders', []).filter(x => x.id !== id)); showToast(t('toast_deleted')); renderReminders(); }
+
+// =====================
+// SETTINGS
+// =====================
+function renderSettings() {
+  const s = DB.get('settings', {});
+  document.getElementById('set-company').value = s.companyName || '';
+  document.getElementById('set-address').value = s.companyAddress || '';
+  document.getElementById('set-phone').value = s.companyPhone || '';
+  document.getElementById('set-email').value = s.companyEmail || '';
+  document.getElementById('set-exchange').value = s.exchangeRate || 15000;
+  document.getElementById('set-default-currency').value = s.defaultCurrency || 'SYP';
+}
+
+function updateAllCurrencyDisplays() {
+  renderAll();
+}
+
+// =====================
+// BACKUP & RESTORE
+// =====================
+function exportBackupJSON() {
+  const data = {
+    version: 3, app: '3Dzone Manager',
+    exportedAt: new Date().toISOString(),
+    settings: DB.get('settings', {}),
+    products: DB.get('products', []),
+    inventory: DB.get('inventory', []),
+    customers: DB.get('customers', []),
+    orders: DB.get('orders', []),
+    income: DB.get('income', []),
+    expenses: DB.get('expenses', []),
+    invoices: DB.get('invoices', []),
+    users: DB.get('users', []),
+    reminders: DB.get('reminders', []),
+    failedPrints: DB.get('failedPrints', [])
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `3Dzone_backup_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(t('toast_export_done'));
+}
+
+function exportBackupXLSX() {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('products', [])), 'Products');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('inventory', [])), 'Inventory');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('customers', [])), 'Customers');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('orders', [])), 'Orders');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('income', [])), 'Income');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('expenses', [])), 'Expenses');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.get('invoices', [])), 'Invoices');
+  XLSX.writeFile(wb, `3Dzone_backup_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('✅ Excel exported');
+}
+
+function importBackupJSON(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      const keys = ['products','inventory','customers','orders','income','expenses','invoices','users','reminders','failedPrints'];
+      for (const k of keys) {
+        if (data[k] === undefined) continue;
+        if (!Array.isArray(data[k]) || !data[k].every(x => x && typeof x === 'object' && Number.isFinite(x.id))) throw new Error('invalid ' + k);
+      }
+      if (data.users && !data.users.some(u => u.role === 'admin')) throw new Error('no admin');
+      if (data.settings !== undefined && (typeof data.settings !== 'object' || Array.isArray(data.settings))) throw new Error('invalid settings');
+      if (!confirm(L('سيتم استبدال البيانات الحالية بالنسخة المستوردة. متابعة؟', 'Current data will be replaced by the imported backup. Continue?'))) { input.value = ''; return; }
+      keys.forEach(k => { if (data[k]) DB.set(k, data[k]); });
+      if (data.settings) DB.set('settings', data.settings);
+      await migratePasswords();
+      const cu = currentUser && DB.get('users', []).find(x => x.id === currentUser.id);
+      if (cu) setCurrentUser(cu); else logout();
+      showToast(t('toast_import_done'));
+      renderAll();
+    } catch(err) { showToast(t('toast_import_fail'), 'error'); }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function clearAllData() {
+  if (!confirm(t('confirm_clear'))) return;
+  ['products','inventory','customers','orders','income','expenses','invoices','reminders','failedPrints'].forEach(k => localStorage.removeItem('3dz_' + k));
+  // Keep users and settings
+  showToast(t('toast_cleared'));
+  renderAll();
+}
+
+// =====================
+// FAILED PRINTS (in Orders section via tab)
+// =====================
+function renderFailedPrints() {
+  // This would be shown in a tab within orders - simplified for now
+}
+
+// =====================
+// INIT
+// =====================
+document.addEventListener('DOMContentLoaded', async () => {
+  initData();
+  await migratePasswords();
+
+  // Restore session
+  try {
+    const sess = JSON.parse(localStorage.getItem('3dz_session') || 'null');
+    const su = sess && DB.get('users', []).find(x => x.id === sess.id);
+    if (su) setCurrentUser(su); else localStorage.removeItem('3dz_session');
+  } catch(e) { localStorage.removeItem('3dz_session'); }
+
+  // Restore language
+  const savedLang = localStorage.getItem('3dz_lang') || 'ar';
+  currentLang = savedLang;
+
+  // Restore currency
+  const savedCur = localStorage.getItem('3dz_currency') || getSetting('defaultCurrency') || 'SYP';
+  currentCurrency = savedCur;
+
+  setLang(savedLang);
+  setCurrency(savedCur);
+
+  // Init date inputs
+  const today = new Date().toISOString().split('T')[0];
+  const reportDate = document.getElementById('report-date');
+  if (reportDate) reportDate.value = today;
+
+  // Render
+  buildSidebar();
+  showSection('dashboard');
+  if (currentUser && currentUser.mustChange) setTimeout(openChangePasswordModal, 400);
+
+  // Check reminders
+  setInterval(() => {
+    const reminders = DB.get('reminders', []);
+    const now = new Date();
+    reminders.forEach(r => {
+      if (!r.done && new Date(r.date) <= now && new Date(r.date) > new Date(now - 60000)) {
+        showToast(`🔔 ${esc(r.title)}`);
+      }
+    });
+  }, 60000);
+});
+</script>
+</body>
+</html>
