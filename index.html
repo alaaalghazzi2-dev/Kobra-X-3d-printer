@@ -1333,13 +1333,11 @@ function buildSidebar() {
   });
   nav.innerHTML = html;
   if (currentUser) {
-    document.getElementById('user-name').textContent = currentUser.name;
-    document.getElementById('user-role').textContent = t('role_' + currentUser.role);
     document.getElementById('sidebar-user').innerHTML = `
       <div class="avatar">${esc(currentUser.name.charAt(0).toUpperCase())}</div>
       <div style="flex:1;">
-        <div style="font-weight:700;color:var(--text);">${esc(currentUser.name)}</div>
-        <div style="font-size:0.75rem;">${t('role_' + currentUser.role)}</div>
+        <div id="user-name" style="font-weight:700;color:var(--text);">${esc(currentUser.name)}</div>
+        <div id="user-role" style="font-size:0.75rem;">${t('role_' + currentUser.role)}</div>
       </div>
       <button class="btn btn-sm btn-secondary" onclick="logout()" style="padding:4px 10px;font-size:0.75rem;">🚪</button>
     `;
