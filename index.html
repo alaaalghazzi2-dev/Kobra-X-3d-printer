@@ -385,6 +385,13 @@ input:checked + .toggle-slider::before { transform:translateX(20px); }
             <div class="chart-container"><canvas id="chart-filament"></canvas></div>
           </div>
           <div class="card">
+            <div class="card-title"><span class="icon">📦</span> <span data-i18n="chart_product_stock">مخزون المنتجات</span></div>
+            <div style="max-height:300px;overflow-y:auto;">
+              <div class="chart-container" id="product-stock-chart-container"><canvas id="chart-product-stock"></canvas></div>
+            </div>
+            <p id="product-stock-empty" style="display:none;color:var(--text-muted);margin-top:10px;" data-i18n="no_products">لا توجد منتجات</p>
+          </div>
+          <div class="card">
             <div class="card-title"><span class="icon">💰</span> <span data-i18n="chart_finance">الإيرادات vs المصروفات</span></div>
             <div class="chart-container"><canvas id="chart-finance"></canvas></div>
           </div>
@@ -709,7 +716,7 @@ const i18n = {
     orders: "الطلبات", finance: "المالية", reports: "التقارير", invoices: "الفواتير",
     users: "المستخدمون", reminders: "التذكيرات", settings: "الإعدادات",
     chart_sales: "المبيعات الشهرية", chart_products: "أكثر المنتجات مبيعاً",
-    chart_filament: "مخزون الفيلامنت", chart_finance: "الإيرادات vs المصروفات",
+    chart_product_stock: "مخزون المنتجات", chart_filament: "مخزون الفيلامنت", chart_finance: "الإيرادات vs المصروفات",
     recent_orders: "أحدث الطلبات", search_products: "ابحث في المنتجات...",
     all_categories: "كل التصنيفات", all_types: "كل الأنواع", type_ready: "جاهز",
     type_custom: "حسب الطلب", btn_add_product: "إضافة منتج", th_sku: "SKU",
@@ -817,7 +824,7 @@ const i18n = {
     orders: "Orders", finance: "Finance", reports: "Reports", invoices: "Invoices",
     users: "Users", reminders: "Reminders", settings: "Settings",
     chart_sales: "Monthly Sales", chart_products: "Top Products",
-    chart_filament: "Filament Stock", chart_finance: "Revenue vs Expenses",
+    chart_product_stock: "Product stock", chart_filament: "Filament Stock", chart_finance: "Revenue vs Expenses",
     recent_orders: "Recent Orders", search_products: "Search products...",
     all_categories: "All Categories", all_types: "All Types", type_ready: "Ready",
     type_custom: "Custom", btn_add_product: "Add Product", th_sku: "SKU",
@@ -1456,7 +1463,6 @@ function renderDashboard() {
 
   const kpis = [
     { label: t('kpi_sales_today'), value: formatMoney(todaySales), change: '' },
-    { label: L('مخزون المنتجات', 'Product stock'), value: products.reduce((sum, p) => sum + Math.max(0, Number(p.stock) || 0), 0).toLocaleString(currentLang === 'ar' ? 'ar-SY' : 'en-US'), change: L('قطعة متاحة من ', 'Units available across ') + products.filter(p => Number(p.stock) > 0).length + L(' أصناف', ' products') },
     { label: t('kpi_orders_pending'), value: pendingOrders, change: '' },
     { label: t('kpi_low_stock'), value: lowStock, change: lowStock > 0 ? '⚠️' : '✅' },
     { label: t('kpi_profit_month'), value: formatMoney(monthProfit), change: '' },
@@ -1528,6 +1534,23 @@ function renderDashboardCharts() {
   charts.filament = new Chart(document.getElementById('chart-filament'), {
     type: 'bar', data: { labels: filaments.map(f => f.name), datasets: [{ label: t('th_qty'), data: filaments.map(f => parseFloat(f.quantity) || 0), backgroundColor: 'rgba(6,182,212,0.6)', borderColor: '#06b6d4', borderWidth: 1, borderRadius: 6 }] },
     options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } } }
+  });
+
+  // Finished product stock, using the same horizontal bars as filament stock.
+  if (charts.productStock) charts.productStock.destroy();
+  document.getElementById('product-stock-chart-container').style.height = Math.max(260, products.length * 38) + 'px';
+  document.getElementById('product-stock-empty').style.display = products.length ? 'none' : 'block';
+  charts.productStock = new Chart(document.getElementById('chart-product-stock'), {
+    type: 'bar',
+    data: { labels: products.map(p => p.name), datasets: [{
+      label: t('th_qty'),
+      data: products.map(p => Math.max(0, Number(p.stock) || 0)),
+      backgroundColor: 'rgba(6,182,212,0.6)', borderColor: '#06b6d4', borderWidth: 1, borderRadius: 6
+    }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } }
+    }
   });
 
   // Finance comparison
